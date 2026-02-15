@@ -16,7 +16,7 @@ const CONFIG = {
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
     STORAGE_KEY: 'geomaster_ai_save',
-    GOOGLE_CLIENT_ID: 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com' // USER MUST REPLACE THIS
+    GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com'
 };
 
 // ===================== FALLBACK DATA (50 countries) =====================
