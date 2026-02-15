@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoMaster AI — The Ultimate Geography Challenge</title>
+    <meta name="description"
+        content="Test your geography knowledge with AI-powered hints, flag identification, capital matching, and currency challenges across 197 countries.">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='n' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%2322d3ee'/%3E%3Cstop offset='100%25' style='stop-color:%23a78bfa'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M50 10 L85 50 L50 90 L15 50 Z' fill='none' stroke='url(%23n)' stroke-width='4'/%3E%3Ccircle cx='50' cy='50' r='10' fill='url(%23n)'/%3E%3C/svg%3E">
+
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <!-- Boxicons -->
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="mobile.css">
+
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+</head>
+
+<body>
+    <!-- Global SVG Definitions -->
+    <svg style="width:0; height:0; position:absolute;" aria-hidden="true" focusable="false">
+        <defs>
+            <linearGradient id="nexusGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#22d3ee" />
+                <stop offset="100%" style="stop-color:#a78bfa" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+
+    <!-- ===== AUTH VIEW (Login/Register) ===== -->
+    <div id="auth-screen" class="hidden">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo-large">
+                    <svg viewBox="0 0 100 100" width="80" height="80">
+                        <path d="M50 10 L90 50 L50 90 L10 50 Z" fill="none" stroke="url(#nexusGrad)" stroke-width="2" />
+                        <circle cx="50" cy="50" r="15" fill="var(--cyan)" />
+                    </svg>
+                </div>
+                <h1>GeoMaster<span class="accent">AI</span></h1>
+                <div class="auth-tabs">
+                    <button class="auth-tab active" data-mode="login">LOG IN</button>
+                    <button class="auth-tab" data-mode="signup">SIGN UP</button>
+                </div>
+
+                <div class="auth-form">
+                    <div class="input-group">
+                        <i class='bx bxs-user'></i>
+                        <input type="text" id="auth-user" placeholder="Agent Codename" autocomplete="off">
+                    </div>
+                    <div class="input-group">
+                        <i class='bx bxs-key'></i>
+                        <input type="password" id="auth-pass" placeholder="Access Key">
+                    </div>
+                    <button class="btn-primary btn-block" id="btn-login">
+                        ESTABLISH LINK <i class='bx bx-right-arrow-alt'></i>
+                    </button>
+
+                    <div class="google-divider">OR</div>
+
+                    <button class="btn-google" id="btn-google">
+                        <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="G"
+                            style="width:18px">
+                        Continue with Google
+                    </button>
+                    <div class="auth-footer">
+                        <p id="auth-msg">Secure Connection Required</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SPLASH LOADER ===== -->
+    <div id="splash-screen">
+        <div class="splash-inner">
+            <div class="splash-logo">
+                <svg class="globe-icon" viewBox="0 0 100 100" width="100" height="100">
+                    <!-- Nexus Core Diamond -->
+                    <path d="M50 5 L90 50 L50 95 L10 50 Z" fill="none" stroke="url(#nexusGrad)" stroke-width="2" />
+                    <path d="M50 20 L80 50 L50 80 L20 50 Z" fill="url(#nexusGrad)" opacity="0.3">
+                        <animate attributeName="opacity" values="0.2;0.5;0.2" dur="3s" repeatCount="indefinite" />
+                    </path>
+                    <!-- Inner Pulse -->
+                    <circle cx="50" cy="50" r="12" fill="#fff" style="filter: drop-shadow(0 0 8px #22d3ee)">
+                        <animate attributeName="r" values="8;13;8" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    <!-- Connections -->
+                    <path d="M50 5 V95 M10 50 H90" stroke="url(#nexusGrad)" stroke-width="0.5" opacity="0.4" />
+                </svg>
+            </div>
+            <h1 class="splash-title">GeoMaster<span class="accent">AI</span></h1>
+            <div class="splash-bar">
+                <div class="splash-fill" id="splash-fill"></div>
+            </div>
+            <p class="splash-status" id="splash-status">System Initialized</p>
+        </div>
+    </div>
+
+    <!-- ===== MAIN APPLICATION ===== -->
+    <div id="app" class="app-hidden">
+
+        <!-- Sidebar Overlay -->
+        <div class="sidebar-overlay"></div>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-mini">
+                    <svg viewBox="0 0 100 100" width="36" height="36">
+                        <path d="M50 10 L85 50 L50 90 L15 50 Z" fill="none" stroke="url(#nexusGrad)" stroke-width="6" />
+                        <circle cx="50" cy="50" r="15" fill="url(#nexusGrad)" />
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <span class="brand">GeoMaster<span class="accent">AI</span></span>
+                    <span class="version">Nexus v2</span>
+                </div>
+            </div>
+
+            <div class="sidebar-profile">
+                <div class="avatar" id="user-avatar" style="background: linear-gradient(135deg, #22d3ee, #a78bfa);">
+                    <svg viewBox="0 0 100 100" width="22" height="22">
+                        <path d="M50 10 L90 50 L50 90 L10 50 Z" fill="#000" />
+                        <circle cx="50" cy="50" r="15" fill="#fff" />
+                    </svg>
+                </div>
+                <div class="profile-info">
+                    <h3 id="user-name">Explorer</h3>
+                    <span class="level-badge" id="user-level">Level 1</span>
+                </div>
+            </div>
+
+            <div class="xp-bar-container">
+                <div class="xp-label"><span>XP</span><span id="xp-text">0 / 1000</span></div>
+                <div class="xp-bar">
+                    <div class="xp-fill" id="xp-fill" style="width:0%"></div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" data-view="home" id="nav-home">
+                    <i class='bx bx-home-alt'></i><span>Dashboard</span>
+                </button>
+                <button class="nav-btn" data-view="flag" id="nav-flag">
+                    <i class='bx bx-flag'></i><span>Flag Vision</span>
+                </button>
+                <button class="nav-btn" data-view="capital" id="nav-capital">
+                    <i class='bx bxs-landmark'></i><span>Capital Bridge</span>
+                </button>
+                <button class="nav-btn" data-view="population" id="nav-population">
+                    <i class='bx bx-group'></i><span>Citizen Surge</span>
+                </button>
+                <button class="nav-btn" data-view="border" id="nav-border">
+                    <i class='bx bx-map-alt'></i><span>Neighbor Nexus</span>
+                </button>
+                <button class="nav-btn oracle-btn" data-view="emoji" id="nav-emoji">
+                    <i class='bx bx-smile'></i><span>Emoji Nexus</span>
+                    <span class="ai-badge">AI</span>
+                </button>
+                <button class="nav-btn oracle-btn" data-view="sentinel" id="nav-sentinel">
+                    <i class='bx bx-message-square-dots'></i><span>AI Sentinel</span>
+                    <span class="ai-badge">AI</span>
+                </button>
+                <button class="nav-btn oracle-btn" data-view="oracle" id="nav-oracle">
+                    <i class='bx bx-brain'></i><span>AI Oracle</span>
+                    <span class="ai-badge">AI</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-stats">
+                <div class="mini-stat">
+                    <i class='bx bx-check-circle'></i>
+                    <div><span class="mini-label">Correct</span><span class="mini-val" id="stat-correct">0</span></div>
+                </div>
+                <div class="mini-stat">
+                    <i class='bx bx-x-circle'></i>
+                    <div><span class="mini-label">Wrong</span><span class="mini-val" id="stat-wrong">0</span></div>
+                </div>
+                <div class="mini-stat">
+                    <i class='bx bx-trophy'></i>
+                    <div><span class="mini-label">Best Streak</span><span class="mini-val" id="stat-streak">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-actions">
+                <button class="action-btn" id="btn-logout">
+                    <i class='bx bx-log-out'></i> Log Out
+                </button>
+                <button class="action-btn danger" id="btn-reset">
+                    <i class='bx bx-trash'></i> Reset Progress
+                </button>
+            </div>
+        </aside>
+
+        <!-- MOBILE HEADER -->
+        <header class="mobile-header" id="mobile-header">
+            <button class="menu-toggle" id="menu-toggle"><i class='bx bx-menu'></i></button>
+            <span class="brand-sm">GeoMaster<span class="accent">AI</span></span>
+            <div class="mobile-score"><i class='bx bx-star'></i> <span id="mobile-score-val">0</span></div>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content" id="main-content">
+
+            <!-- HOME VIEW -->
+            <section class="view view-home active" id="view-home">
+                <header class="view-header">
+                    <div>
+                        <h1 class="hero-title">Welcome to <span class="accent">GeoMaster AI</span></h1>
+                        <p class="hero-sub">Master the geography of 197 countries through AI-powered challenges.</p>
+                    </div>
+                    <button class="settings-btn" id="btn-open-settings" title="Agent Settings">
+                        <i class='bx bx-cog'></i>
+                    </button>
+                </header>
+                <div class="mode-grid">
+                    <div class="mode-card" data-mode="flag">
+                        <div class="mode-glow"></div>
+                        <i class='bx bx-flag mode-icon'></i>
+                        <h3>Flag Vision</h3>
+                        <p>Identify nations by their flags</p>
+                        <span class="mode-count" id="count-flag">0 / 0 answered</span>
+                    </div>
+                    <div class="mode-card" data-mode="capital">
+                        <div class="mode-glow"></div>
+                        <i class='bx bxs-landmark mode-icon'></i>
+                        <h3>Capital Bridge</h3>
+                        <p>Match capitals to countries</p>
+                        <span class="mode-count" id="count-capital">0 / 0 answered</span>
+                    </div>
+                    <div class="mode-card" data-mode="currency">
+                        <div class="mode-glow"></div>
+                        <i class='bx bx-coin-stack mode-icon'></i>
+                        <h3>Currency Pulse</h3>
+                        <p>Decode economies worldwide</p>
+                        <span class="mode-count" id="count-currency">0 / 0 answered</span>
+                    </div>
+                    <div class="mode-card" data-mode="population">
+                        <i class='bx bx-group mode-icon'></i>
+                        <h3>Citizen Surge</h3>
+                        <p>Analyze and compare global metrics</p>
+                        <div class="mode-sub-options">
+                            <button class="sub-opt-btn"
+                                onclick="event.stopPropagation(); startStandardQuiz('population', 'people')">
+                                <i class='bx bx-user'></i> Population
+                            </button>
+                            <button class="sub-opt-btn"
+                                onclick="event.stopPropagation(); startStandardQuiz('population', 'area')">
+                                <i class='bx bx-expand'></i> Area Size
+                            </button>
+                        </div>
+                        <span class="mode-count" id="count-population">0 / 0 answered</span>
+                    </div>
+                    <div class="mode-card" data-mode="border">
+                        <div class="mode-glow"></div>
+                        <i class='bx bx-map-alt mode-icon'></i>
+                        <h3>Neighbor Nexus</h3>
+                        <p>Identify countries by their neighbors</p>
+                        <span class="mode-count" id="count-border">0 / 0 answered</span>
+                    </div>
+                    <div class="mode-card mode-card-oracle" data-mode="emoji">
+                        <div class="mode-glow oracle-glow"></div>
+                        <i class='bx bx-smile mode-icon'></i>
+                        <h3>Emoji Nexus</h3>
+                        <p>Decode 5 generated emojis</p>
+                        <span class="ai-tag"><i class='bx bx-bot'></i> Generative AI</span>
+                    </div>
+                    <div class="mode-card mode-card-oracle" data-mode="sentinel">
+                        <div class="mode-glow oracle-glow"></div>
+                        <i class='bx bx-message-square-dots mode-icon'></i>
+                        <h3>AI Sentinel</h3>
+                        <div class="mode-status-pill">INTERACTIVE</div>
+                        <p>Interrogate the global keeper</p>
+                        <span class="ai-tag"><i class='bx bx-bot'></i> Live Chat AI</span>
+                    </div>
+                    <div class="mode-card mode-card-oracle" data-mode="oracle">
+                        <div class="mode-glow oracle-glow"></div>
+                        <i class='bx bx-brain mode-icon'></i>
+                        <h3>AI Oracle</h3>
+                        <p>AI-generated cryptic hints</p>
+                        <span class="ai-tag"><i class='bx bx-bot'></i> Powered by AI</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- QUIZ VIEW (shared by flag, capital, currency) -->
+            <section class="view view-quiz" id="view-quiz">
+                <div class="quiz-top-bar">
+                    <button class="back-btn" id="quiz-back"><i class='bx bx-arrow-back'></i> Back</button>
+                    <div class="quiz-meta">
+                        <span class="quiz-mode-label" id="quiz-mode-label">Flag Vision</span>
+                    </div>
+                    <div class="quiz-lives" id="quiz-lives">
+                        <i class='bx bxs-heart'></i><i class='bx bxs-heart'></i><i class='bx bxs-heart'></i>
+                    </div>
+                </div>
+
+                <div class="quiz-progress">
+                    <div class="quiz-progress-fill" id="quiz-timer-fill"></div>
+                </div>
+
+                <div class="quiz-body" id="quiz-body">
+                    <p class="quiz-prompt" id="quiz-prompt">Identify this flag</p>
+                    <div class="quiz-media" id="quiz-media"></div>
+                    <div class="quiz-subject" id="quiz-subject"></div>
+                    <div class="quiz-options" id="quiz-options"></div>
+                </div>
+
+                <div class="quiz-score-bar">
+                    <span><i class='bx bx-star'></i> Score: <b id="quiz-score">0</b></span>
+                    <span><i class='bx bx-trending-up'></i> Streak: <b id="quiz-streak">0</b></span>
+                </div>
+            </section>
+
+            <!-- ORACLE VIEW -->
+            <section class="view view-oracle" id="view-oracle">
+                <div class="quiz-top-bar">
+                    <button class="back-btn" id="oracle-back"><i class='bx bx-arrow-back'></i> Back</button>
+                    <div class="quiz-meta"><span class="quiz-mode-label">AI Oracle</span></div>
+                    <div class="quiz-lives" id="oracle-lives">
+                        <i class='bx bxs-heart'></i><i class='bx bxs-heart'></i><i class='bx bxs-heart'></i>
+                    </div>
+                </div>
+                <div class="quiz-progress">
+                    <div class="quiz-progress-fill" id="oracle-timer-fill"></div>
+                </div>
+
+                <div class="oracle-body">
+                    <div class="oracle-header">
+                        <div class="oracle-avatar"><i class='bx bx-brain'></i></div>
+                        <div>
+                            <h3>The Oracle Speaks</h3>
+                            <p class="oracle-sub" id="oracle-status">Analyzing satellite data...</p>
+                        </div>
+                    </div>
+
+                    <div class="hints-container" id="hints-container">
+                        <!-- Hints injected here -->
+                    </div>
+
+                    <div class="quiz-options oracle-options" id="oracle-options"></div>
+                </div>
+
+                <div class="quiz-score-bar">
+                    <span><i class='bx bx-star'></i> Score: <b id="oracle-score">0</b></span>
+                    <span><i class='bx bx-trending-up'></i> Streak: <b id="oracle-streak">0</b></span>
+                </div>
+            </section>
+
+            <!-- SENTINEL VIEW -->
+            <section class="view view-sentinel" id="view-sentinel">
+                <div class="quiz-top-bar">
+                    <button class="back-btn" id="sentinel-back"><i class='bx bx-arrow-back'></i> Back</button>
+                    <div class="quiz-meta"><span class="quiz-mode-label">AI Sentinel</span></div>
+                    <div class="quiz-lives" id="sentinel-lives">
+                        <i class='bx bxs-heart'></i><i class='bx bxs-heart'></i><i class='bx bxs-heart'></i>
+                    </div>
+                </div>
+                <div class="quiz-progress">
+                    <div class="quiz-progress-fill" id="sentinel-timer-fill"></div>
+                </div>
+                <div class="sentinel-timer-row">
+                    <button class="sentinel-timer-toggle" id="sentinel-timer-toggle"
+                        title="Click to change timer duration">
+                        <i class='bx bx-timer'></i>
+                        <span id="sentinel-timer-label">60s</span>
+                    </button>
+                </div>
+
+                <div class="sentinel-body">
+                    <div class="sentinel-chat-container" id="sentinel-chat">
+                        <div class="chat-msg bot-msg">
+                            <i class='bx bx-bot'></i>
+                            <div class="msg-content">Accessing secure geographic nodes. I have chosen a nation. You have
+                                3 interrogation credits remaining. Ask your first question.</div>
+                        </div>
+                    </div>
+
+                    <div class="sentinel-controls" id="sentinel-input-area">
+                        <div class="credits-bar">
+                            <span>Credits:</span>
+                            <div class="credit-pips" id="sentinel-credits">
+                                <span class="pip"></span><span class="pip"></span><span class="pip"></span>
+                            </div>
+                        </div>
+                        <div class="chat-input-row">
+                            <input type="text" id="sentinel-input"
+                                placeholder="Type your question here (e.g. Is it in Asia?)" autocomplete="off">
+                            <button id="btn-sentinel-send"><i class='bx bxs-send'></i></button>
+                        </div>
+                    </div>
+
+                    <div class="sentinel-options quiz-options" id="sentinel-options" style="margin-top: 1rem;"></div>
+                </div>
+
+                <div class="quiz-score-bar">
+                    <span><i class='bx bx-star'></i> Score: <b id="sentinel-score">0</b></span>
+                    <span><i class='bx bx-trending-up'></i> Streak: <b id="sentinel-streak">0</b></span>
+                </div>
+            </section>
+
+            <!-- GAME OVER VIEW -->
+            <section class="view view-gameover" id="view-gameover">
+                <div class="gameover-card">
+                    <div class="gameover-icon"><i class='bx bx-planet'></i></div>
+                    <h1>Mission Complete</h1>
+                    <div class="gameover-stats">
+                        <div class="go-stat"><span class="go-num" id="go-score">0</span><span
+                                class="go-label">Score</span>
+                        </div>
+                        <div class="go-stat"><span class="go-num" id="go-correct">0</span><span
+                                class="go-label">Correct</span></div>
+                        <div class="go-stat"><span class="go-num" id="go-streak">0</span><span class="go-label">Best
+                                Streak</span></div>
+                    </div>
+                    <div class="gameover-actions">
+                        <button class="btn-primary" id="go-retry"><i class='bx bx-revision'></i> Play Again</button>
+                        <button class="btn-secondary" id="go-home"><i class='bx bx-home'></i> Dashboard</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- OVERLAY for mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ===== SETTINGS VIEW ===== -->
+    <section class="view view-settings" id="view-settings">
+        <div class="settings-container">
+            <header class="settings-header">
+                <button class="back-link" id="settings-back"><i class='bx bx-left-arrow-alt'></i> Dashboard</button>
+                <h2>Agent Profile Settings</h2>
+            </header>
+
+            <div class="settings-card">
+                <div class="settings-item">
+                    <label>Agent Codename</label>
+                    <div class="input-group">
+                        <i class='bx bxs-user-detail'></i>
+                        <input type="text" id="settings-username" placeholder="New Codename">
+                    </div>
+                    <p class="help-text">Changing your codename will migrate your progress data to the new record.</p>
+                </div>
+
+                <button class="btn-primary" id="btn-save-settings">
+                    UPDATE PROFILE <i class='bx bx-save'></i>
+                </button>
+            </div>
+        </div>
+    </section>
+
+
+    <div id="modal-overlay">
+        <div class="modal-card">
+            <i class='bx bx-info-circle modal-icon' id="modal-icon"></i>
+            <h2 id="modal-title">Attention</h2>
+            <p id="modal-text">Message content goes here.</p>
+            <div class="modal-actions" id="modal-actions">
+                <!-- Buttons injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- APP SCRIPT -->
+    <script src="app.js"></script>
+</body>
+
+</html>
