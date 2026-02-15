@@ -81,13 +81,20 @@ function getDefaultSave() {
 }
 
 function loadSave(username) {
-    if (!username) return getDefaultSave();
+    const fallback = getDefaultSave();
+    if (!username) return fallback;
     try {
         const key = CONFIG.STORAGE_KEY + '_' + username;
         const raw = localStorage.getItem(key);
-        if (raw) return JSON.parse(raw);
+        if (raw && raw !== 'null' && raw !== 'undefined') {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                // Merge with fallback to ensure all properties exist
+                return { ...fallback, ...parsed, answered: { ...fallback.answered, ...(parsed.answered || {}) } };
+            }
+        }
     } catch (e) { console.warn('Save corrupted, resetting.'); }
-    return getDefaultSave();
+    return fallback;
 }
 
 function saveSave(data) {
@@ -346,24 +353,27 @@ function showView(viewId) {
 }
 
 function updateSidebarStats() {
-    $('#stat-correct').textContent = save.totalCorrect;
-    $('#stat-wrong').textContent = save.totalWrong;
-    $('#stat-streak').textContent = save.bestStreak;
-    $('#user-level').textContent = 'Level ' + save.level;
-    $('#xp-text').textContent = save.xp + ' / ' + (save.level * CONFIG.XP_PER_LEVEL);
-    $('#xp-fill').style.width = Math.min(100, (save.xp / (save.level * CONFIG.XP_PER_LEVEL)) * 100) + '%';
-    $('#mobile-score-val').textContent = save.totalCorrect;
+    if (!save) save = getDefaultSave();
+
+    if ($('#stat-correct')) $('#stat-correct').textContent = save.totalCorrect || 0;
+    if ($('#stat-wrong')) $('#stat-wrong').textContent = save.totalWrong || 0;
+    if ($('#stat-streak')) $('#stat-streak').textContent = save.bestStreak || 0;
+    if ($('#user-level')) $('#user-level').textContent = 'Level ' + (save.level || 1);
+
+    const xpNeed = (save.level || 1) * CONFIG.XP_PER_LEVEL;
+    if ($('#xp-text')) $('#xp-text').textContent = (save.xp || 0) + ' / ' + xpNeed;
+    if ($('#xp-fill')) $('#xp-fill').style.width = Math.min(100, ((save.xp || 0) / xpNeed) * 100) + '%';
+    if ($('#mobile-score-val')) $('#mobile-score-val').textContent = save.totalCorrect || 0;
 
     // Update home mode counts and mastery status
     ['flag', 'capital', 'currency', 'population', 'border', 'emoji', 'sentinel'].forEach(mode => {
         const el = $('#count-' + mode);
         const card = $(`.mode-card[data-mode="${mode}"]`);
         const count = (save.answered[mode] || []).length;
-        const total = allCountries.length;
+        const total = (allCountries && allCountries.length) ? allCountries.length : 0;
 
         if (el) el.textContent = count + ' / ' + total + ' answered';
 
-        // Mastery check: if they've answered more than 98% of countries
         if (card && total > 0 && count >= total - 1) {
             card.classList.add('mastered');
             if (el) el.innerHTML = '<i class="bx bxs-trophy" style="color:var(--amber)"></i> MASTERED';
@@ -1103,7 +1113,9 @@ function initEvents() {
                     const newKey = CONFIG.STORAGE_KEY + '_' + newName;
                     const data = localStorage.getItem(oldKey);
 
-                    localStorage.setItem(newKey, data);
+                    if (data && data !== 'null') {
+                        localStorage.setItem(newKey, data);
+                    }
                     localStorage.setItem('geo_last_user', newName);
                     currentUser = newName;
 
