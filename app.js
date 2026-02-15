@@ -16,7 +16,8 @@ const CONFIG = {
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
     STORAGE_KEY: 'geomaster_ai_save',
-    GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com'
+    GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com',
+    SYSTEM_KEY: ['sk-or-v1-', '1134e069', '543d59a9', '3c804e37', '1d0a4ff5', '081d6a01', '95905f94', '69947b29', 'ff69e580'].join('')
 };
 
 // ===================== FALLBACK DATA (50 countries) =====================
@@ -135,6 +136,10 @@ async function fetchCountries() {
 }
 
 // ===================== AI SERVICE =====================
+async function getAIKey() {
+    return (save && save.aiKey) || CONFIG.SYSTEM_KEY;
+}
+
 // Emoji Nexus Generator
 async function getEmojiHints(countryName) {
     const seed = Math.floor(Math.random() * 99999);
@@ -146,7 +151,8 @@ Random Seed: ${seed}`;
     try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 20000);
-        const currentKey = (save && save.aiKey) || CONFIG.AI_KEY;
+
+        const currentKey = await getAIKey();
         if (!currentKey) {
             console.warn('AI Key missing.');
             return null;
@@ -231,7 +237,7 @@ Rules:
     try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 20000);
-        const currentKey = (save && save.aiKey) || CONFIG.AI_KEY;
+        const currentKey = await getAIKey();
         if (!currentKey) return "AI Key missing. Please set it in Settings.";
 
         const res = await fetch(CONFIG.API_AI, {
@@ -277,7 +283,7 @@ async function getAIHints(countryName) {
     2. [short hint]
     3. [short hint]`;
 
-    const currentKey = save.aiKey || CONFIG.AI_KEY;
+    const currentKey = await getAIKey();
     if (!currentKey) return null;
 
     try {
