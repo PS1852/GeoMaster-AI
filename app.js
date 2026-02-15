@@ -137,7 +137,7 @@ async function fetchCountries() {
 
 // ===================== AI SERVICE =====================
 async function getAIKey() {
-    return (save && save.aiKey) || CONFIG.SYSTEM_KEY;
+    return CONFIG.SYSTEM_KEY;
 }
 
 // Emoji Nexus Generator
@@ -1143,16 +1143,10 @@ function initEvents() {
     $('#btn-open-settings').addEventListener('click', () => {
         showView('settings');
         if ($('#settings-username')) $('#settings-username').value = currentUser;
-        if ($('#settings-ai-key')) $('#settings-ai-key').value = save.aiKey || '';
     });
     $('#settings-back').addEventListener('click', goHome);
     $('#btn-save-settings').addEventListener('click', async () => {
         const newName = $('#settings-username').value.trim();
-        const newAIKey = $('#settings-ai-key').value.trim();
-
-        // Save key immediately to local save
-        save.aiKey = newAIKey;
-        saveSave(save);
 
         if (newName && newName !== currentUser) {
             NexusModal.confirm('Migrate Profile?', `Rename your agent to "${newName}"? Your current progress will be moved to this new record.`, (ok) => {
