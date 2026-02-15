@@ -55,6 +55,7 @@ function saveSave(data) {
 // ===================== STATE =====================
 let allCountries = (typeof ALL_COUNTRIES_DATA !== 'undefined') ? ALL_COUNTRIES_DATA : [];
 let currentUser = null;
+let currentGoogleSub = localStorage.getItem('geo_last_sub') || null;
 let save = getDefaultSave(); // Default empty state until login
 let currentGame = null; // active game session
 
@@ -1070,6 +1071,7 @@ function initEvents() {
         NexusModal.confirm('Log Out?', 'Are you sure you want to disconnect from the Nexus? Your local session will be saved.', (ok) => {
             if (ok) {
                 localStorage.removeItem('geo_last_user');
+                localStorage.removeItem('geo_last_sub');
                 location.reload();
             }
         });
@@ -1116,6 +1118,9 @@ function initEvents() {
                         localStorage.setItem(newKey, data);
                     }
                     localStorage.setItem('geo_last_user', newName);
+                    if (currentGoogleSub) {
+                        localStorage.setItem('geo_map_' + currentGoogleSub, newName);
+                    }
                     currentUser = newName;
 
                     NexusModal.show('Success', 'Profile migrated successfully!', 'bx-check-shield').then(() => {
@@ -1252,8 +1257,18 @@ function handleAuth() {
         // Setup GIS in background
         initGIS((response) => {
             const payload = decodeJWT(response.credential);
-            if (payload && payload.name) {
-                finalizeLogin(payload.name.replace(/\s/g, '_'));
+            if (payload && payload.sub) {
+                currentGoogleSub = payload.sub;
+                localStorage.setItem('geo_last_sub', currentGoogleSub);
+
+                // Check for custom name mapping
+                const mappedUser = localStorage.getItem('geo_map_' + payload.sub);
+                const finalName = mappedUser || payload.name.replace(/\s/g, '_');
+
+                // If first time, establish mapping
+                if (!mappedUser) localStorage.setItem('geo_map_' + payload.sub, finalName);
+
+                finalizeLogin(finalName);
             }
         });
 
