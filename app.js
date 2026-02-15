@@ -93,9 +93,11 @@ async function getAIKey() {
 // Emoji Nexus Generator
 async function getEmojiHints(countryName) {
     const seed = Math.floor(Math.random() * 99999);
-    const prompt = `Generate EXACTLY 5 distinct emojis for "${countryName}".
-Focus on: Culture, Nature, Food, Landmarks.
-Constraint: Output ONLY the 5 emojis. No text.
+    const prompt = `Generate exactly 5 different emojis for "${countryName}".
+IMPORTANT:
+1. ONLY output emojis (5 total).
+2. DO NOT use country flags or any letters/country codes (like LC, US, GB).
+3. Focus on: Landmark, Culture, Nature, Food, Unique item.
 Random Seed: ${seed}`;
 
     try {
@@ -139,8 +141,11 @@ Random Seed: ${seed}`;
         const emojiRegex = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
         let emojis = raw.match(emojiRegex) || [];
 
-        // Filter garbage
-        emojis = emojis.filter(e => e.length >= 2 || e.codePointAt(0) > 1000);
+        // Filter out non-emoji artifacts and country flag codes (like LC)
+        emojis = emojis.filter(e => {
+            if (e.length === 2 && /^[A-Z]{2}$/.test(e)) return false;
+            return e.length >= 2 || e.codePointAt(0) > 1000;
+        });
 
         // PAD if too few
         const fallback = ['🌍', '📍', '🗺️', '🏳️', '🌐', '🏙️', '🏞️'];
@@ -148,8 +153,9 @@ Random Seed: ${seed}`;
             emojis.push(fallback[Math.floor(Math.random() * fallback.length)]);
         }
 
-        // SLICE if too many
-        return emojis.slice(0, 5).join('');
+        // SLICE if too many, and join with a pulse-plus icon
+        const sep = '<span class="nexus-plus"> + </span>';
+        return emojis.slice(0, 5).join(sep);
     } catch (err) {
         console.warn('Emoji AI failed:', err.message);
         return null;
@@ -165,7 +171,8 @@ function generateLocalEmojis(country) {
     const base = regionEmojis[country.region] || '🌐';
     const pop = country.population > 100000000 ? '👥' : '👤';
     const cur = country.currencies ? '💰' : '🪙';
-    return base + '🗺️' + pop + cur + '🚩';
+    const sep = '<span class="nexus-plus"> + </span>';
+    return [base, '🗺️', pop, cur, '🧭'].join(sep);
 }
 
 // AI Sentinel Interrogator
