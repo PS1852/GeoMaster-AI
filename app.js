@@ -1177,7 +1177,6 @@ const NexusModal = {
     }
 };
 
-// Decode JWT for Google Profile
 function decodeJWT(token) {
     try {
         const base64Url = token.split('.')[1];
@@ -1189,6 +1188,38 @@ function decodeJWT(token) {
     } catch (e) { return null; }
 }
 
+// Global state for Auth
+let gisLoaded = false;
+function initGIS(callback) {
+    if (window.google) {
+        try {
+            google.accounts.id.initialize({
+                client_id: CONFIG.GOOGLE_CLIENT_ID,
+                callback: callback,
+                auto_select: false,
+                cancel_on_tap_outside: true
+            });
+            gisLoaded = true;
+            renderGButton();
+        } catch (e) { console.warn('GIS error:', e); }
+    } else {
+        setTimeout(() => initGIS(callback), 150);
+    }
+}
+
+function renderGButton() {
+    const btn = document.getElementById("btn-google");
+    if (window.google && gisLoaded && btn) {
+        google.accounts.id.renderButton(btn, {
+            theme: "filled_blue", size: "large", text: "continue_with",
+            shape: "pill", width: "280"
+        });
+    } else if (gisLoaded && !btn) {
+        // Screen might not be ready yet, retry once
+        setTimeout(renderGButton, 200);
+    }
+}
+
 // ===================== AUTH LOGIC =====================
 function handleAuth() {
     return new Promise(resolve => {
@@ -1197,49 +1228,39 @@ function handleAuth() {
         const finalizeLogin = (user) => {
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
-            $('#auth-screen').classList.add('hidden');
+            const authScreen = $('#auth-screen');
+            if (authScreen) authScreen.classList.add('hidden');
             resolve();
         };
 
-        // Initialize Real Google SDK
-        if (window.google) {
-            google.accounts.id.initialize({
-                client_id: CONFIG.GOOGLE_CLIENT_ID,
-                callback: (response) => {
-                    const payload = decodeJWT(response.credential);
-                    if (payload && payload.name) {
-                        finalizeLogin(payload.name.replace(/\s/g, '_'));
-                    }
-                },
-                auto_select: false,
-                cancel_on_tap_outside: true
-            });
+        // Guest Login Handler
+        const guestBtn = $('#btn-guest-login');
+        if (guestBtn) {
+            guestBtn.onclick = () => {
+                const rng = Math.floor(1000 + Math.random() * 9000);
+                finalizeLogin('Agent_' + rng);
+            };
         }
 
-        if (lastUser) {
-            loginUser(lastUser);
-            resolve();
-        } else {
-            if ($('#splash-screen')) $('#splash-screen').classList.add('hidden');
-            $('#auth-screen').classList.remove('hidden');
+        // Setup GIS in background
+        initGIS((response) => {
+            const payload = decodeJWT(response.credential);
+            if (payload && payload.name) {
+                finalizeLogin(payload.name.replace(/\s/g, '_'));
+            }
+        });
 
-            const renderGoogleBtn = () => {
-                if (window.google) {
-                    google.accounts.id.renderButton(
-                        document.getElementById("btn-google"),
-                        {
-                            theme: "filled_blue",
-                            size: "large",
-                            text: "continue_with",
-                            shape: "pill",
-                            width: "280"
-                        }
-                    );
-                } else {
-                    setTimeout(renderGoogleBtn, 100);
-                }
-            };
-            renderGoogleBtn();
+        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
+            finalizeLogin(lastUser);
+        } else {
+            // No saved session, show Auth Screen
+            if ($('#splash-screen')) $('#splash-screen').classList.add('hidden');
+            const authScreen = $('#auth-screen');
+            if (authScreen) {
+                authScreen.classList.remove('hidden');
+                // Ensure button renders now that it's visible
+                setTimeout(renderGButton, 100);
+            }
         }
     });
 }
@@ -1265,7 +1286,12 @@ async function boot() {
         // Step 0: Auth
         if (splashStatus) splashStatus.textContent = 'Establishing Secure Link...';
         await handleAuth();
-        if ($('#splash-screen')) $('#splash-screen').classList.remove('hidden');
+
+        // Ensure splash is visible for loading progress if it was hidden
+        const splash = $('#splash-screen');
+        if (splash && splash.classList.contains('hidden')) {
+            splash.classList.remove('hidden');
+        }
 
 
         // Step 1: UI ready
