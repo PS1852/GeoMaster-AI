@@ -8,7 +8,7 @@ const CONFIG = {
     API_COUNTRY: 'https://restcountries.com/v3.1/all?fields=name,cca3,capital,flags,currencies,region,subregion,population,independent,borders,area',
     API_AI: 'https://openrouter.ai/api/v1/chat/completions',
     AI_KEY: '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',
-    AI_MODEL: 'openai/gpt-3.5-turbo',
+    AI_MODEL: 'google/gemini-2.0-flash-lite-preview-02-05:free',
     TIMER_STANDARD: 15,   // seconds
     TIMER_ORACLE: 40,
     TIMER_SENTINEL_DEFAULT: 60,
@@ -148,7 +148,12 @@ Random Seed: ${seed}`;
         const tid = setTimeout(() => ctrl.abort(), 20000);
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + CONFIG.AI_KEY, 'Content-Type': 'application/json' },
+            headers: {
+                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
+                'X-Title': 'GeoMaster AI'
+            },
             body: JSON.stringify({
                 model: CONFIG.AI_MODEL,
                 messages: [{ role: 'user', content: prompt }],
@@ -160,7 +165,8 @@ Random Seed: ${seed}`;
         clearTimeout(tid);
 
         if (!res.ok) {
-            console.warn('Emoji API HTTP error:', res.status);
+            const errData = await res.json().catch(() => ({}));
+            console.warn('Emoji API Error:', res.status, errData);
             return null;
         }
 
@@ -221,19 +227,25 @@ Rules:
         const tid = setTimeout(() => ctrl.abort(), 20000);
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + CONFIG.AI_KEY, 'Content-Type': 'application/json' },
+            headers: {
+                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
+                'X-Title': 'GeoMaster AI'
+            },
             body: JSON.stringify({
                 model: CONFIG.AI_MODEL,
                 messages: messages,
                 temperature: 0.7,
-                max_tokens: 200
+                max_tokens: 250
             }),
             signal: ctrl.signal
         });
         clearTimeout(tid);
 
         if (!res.ok) {
-            console.warn('Sentinel API error:', res.status);
+            const errData = await res.json().catch(() => ({}));
+            console.warn('Sentinel API Error:', res.status, errData);
             return "Connection error. The network is unreachable. Retrying signal...";
         }
 
@@ -259,7 +271,12 @@ async function getAIHints(countryName) {
     try {
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + CONFIG.AI_KEY, 'Content-Type': 'application/json' },
+            headers: {
+                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
+                'X-Title': 'GeoMaster AI'
+            },
             body: JSON.stringify({
                 model: CONFIG.AI_MODEL,
                 messages: [{ role: 'user', content: prompt }],
@@ -267,6 +284,13 @@ async function getAIHints(countryName) {
                 max_tokens: 200
             })
         });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            console.warn('Oracle API Error:', res.status, errData);
+            return null;
+        }
+
         const data = await res.json();
         const text = data.choices[0].message.content;
         const lines = text.split('\n').filter(l => l.trim().length > 3);
