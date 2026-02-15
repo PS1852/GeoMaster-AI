@@ -7,8 +7,8 @@
 const CONFIG = {
     API_COUNTRY: 'https://restcountries.com/v3.1/all?fields=name,cca3,capital,flags,currencies,region,subregion,population,independent,borders,area',
     API_AI: 'https://openrouter.ai/api/v1/chat/completions',
-    AI_KEY: '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',
-    AI_MODEL: 'google/gemini-2.0-flash-lite-preview-02-05:free',
+    AI_KEY: '', // REMOVED FOR SECURITY. KEY IS NOW STORED IN SETTINGS.
+    AI_MODEL: 'openai/gpt-3.5-turbo',
     TIMER_STANDARD: 15,   // seconds
     TIMER_ORACLE: 40,
     TIMER_SENTINEL_DEFAULT: 60,
@@ -146,10 +146,16 @@ Random Seed: ${seed}`;
     try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 20000);
+        const currentKey = (save && save.aiKey) || CONFIG.AI_KEY;
+        if (!currentKey) {
+            console.warn('AI Key missing.');
+            return null;
+        }
+
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Authorization': 'Bearer ' + currentKey,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
                 'X-Title': 'GeoMaster AI'
@@ -225,10 +231,13 @@ Rules:
     try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 20000);
+        const currentKey = (save && save.aiKey) || CONFIG.AI_KEY;
+        if (!currentKey) return "AI Key missing. Please set it in Settings.";
+
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Authorization': 'Bearer ' + currentKey,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
                 'X-Title': 'GeoMaster AI'
@@ -268,11 +277,14 @@ async function getAIHints(countryName) {
     2. [short hint]
     3. [short hint]`;
 
+    const currentKey = save.aiKey || CONFIG.AI_KEY;
+    if (!currentKey) return null;
+
     try {
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + CONFIG.AI_KEY,
+                'Authorization': 'Bearer ' + currentKey,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'https://ps1852.github.io/GeoMaster-AI/',
                 'X-Title': 'GeoMaster AI'
@@ -1122,14 +1134,20 @@ function initEvents() {
         $('#sidebar-overlay').classList.remove('visible');
     });
 
-    // Settings
     $('#btn-open-settings').addEventListener('click', () => {
         showView('settings');
-        $('#settings-username').value = currentUser;
+        if ($('#settings-username')) $('#settings-username').value = currentUser;
+        if ($('#settings-ai-key')) $('#settings-ai-key').value = save.aiKey || '';
     });
     $('#settings-back').addEventListener('click', goHome);
     $('#btn-save-settings').addEventListener('click', async () => {
         const newName = $('#settings-username').value.trim();
+        const newAIKey = $('#settings-ai-key').value.trim();
+
+        // Save key immediately to local save
+        save.aiKey = newAIKey;
+        saveSave(save);
+
         if (newName && newName !== currentUser) {
             NexusModal.confirm('Migrate Profile?', `Rename your agent to "${newName}"? Your current progress will be moved to this new record.`, (ok) => {
                 if (ok) {
