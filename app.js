@@ -1219,67 +1219,23 @@ function handleAuth() {
             if ($('#splash-screen')) $('#splash-screen').classList.add('hidden');
             $('#auth-screen').classList.remove('hidden');
 
-            let authMode = 'login';
-
-            const tabs = document.querySelectorAll('.auth-tab');
-            tabs.forEach(tab => {
-                tab.onclick = () => {
-                    tabs.forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-                    authMode = tab.dataset.mode;
-                    $('#btn-login').innerHTML = authMode === 'login' ?
-                        `ESTABLISH LINK <i class='bx bx-right-arrow-alt'></i>` :
-                        `CREATE ACCOUNT <i class='bx bx-plus-circle'></i>`;
-                };
-            });
-
-            const doAuth = () => {
-                const u = $('#auth-user').value.trim();
-                const p = $('#auth-pass').value.trim();
-
-                if (!u || !p) {
-                    $('.auth-card').classList.add('error');
-                    $('#auth-msg').textContent = 'AGENT ID & KEY REQUIRED';
-                    setTimeout(() => $('.auth-card').classList.remove('error'), 500);
-                    return;
-                }
-
-                if (authMode === 'signup') {
-                    NexusModal.confirm('New Account?', `Create a new Nexus profile for Agent "${u}"?`, (ok) => {
-                        if (ok) finalizeLogin(u);
-                    });
+            const renderGoogleBtn = () => {
+                if (window.google) {
+                    google.accounts.id.renderButton(
+                        document.getElementById("btn-google"),
+                        {
+                            theme: "filled_blue",
+                            size: "large",
+                            text: "continue_with",
+                            shape: "pill",
+                            width: "280"
+                        }
+                    );
                 } else {
-                    const key = CONFIG.STORAGE_KEY + '_' + u;
-                    if (localStorage.getItem(key) || u === 'Guest' || u === 'Admin') {
-                        finalizeLogin(u);
-                    } else {
-                        $('#auth-msg').textContent = 'AGENT RECORD NOT FOUND';
-                        $('.auth-card').classList.add('error');
-                        setTimeout(() => $('.auth-card').classList.remove('error'), 500);
-                    }
+                    setTimeout(renderGoogleBtn, 100);
                 }
             };
-
-            // Trigger REAL Google Sign-In
-            $('#btn-google').onclick = () => {
-                if (!CONFIG.GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID.includes('YOUR_CLIENT_ID')) {
-                    NexusModal.show('Setup Required', 'A Google Client ID is required for real login. See the instructions in your browser console.', 'bx-error-circle', true);
-                    console.info("%c[Google Auth Setup]%c\n1. Go to Google Cloud Console\n2. Create an OAuth 2.0 Client ID\n3. Add 'http://localhost:8000' to Authorized Javascript Origins\n4. Copy ID to app.js CONFIG.GOOGLE_CLIENT_ID", "color: #22d3ee; font-weight: bold", "color: white");
-                    return;
-                }
-
-                // Show official Google Picker
-                google.accounts.id.prompt((notification) => {
-                    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                        google.accounts.id.renderButton(document.getElementById("btn-google"), { theme: "outline", size: "large", width: "320" });
-                    }
-                });
-            };
-
-            $('#btn-login').addEventListener('click', doAuth);
-            $('#auth-pass').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') doAuth();
-            });
+            renderGoogleBtn();
         }
     });
 }

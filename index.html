@@ -53,31 +53,11 @@
                     </svg>
                 </div>
                 <h1>GeoMaster<span class="accent">AI</span></h1>
-                <div class="auth-tabs">
-                    <button class="auth-tab active" data-mode="login">LOG IN</button>
-                    <button class="auth-tab" data-mode="signup">SIGN UP</button>
-                </div>
-
                 <div class="auth-form">
-                    <div class="input-group">
-                        <i class='bx bxs-user'></i>
-                        <input type="text" id="auth-user" placeholder="Agent Codename" autocomplete="off">
+                    <p class="auth-subtitle">SECURE AGENT AUTHENTICATION</p>
+                    <div id="google-btn-container">
+                        <div id="btn-google"></div>
                     </div>
-                    <div class="input-group">
-                        <i class='bx bxs-key'></i>
-                        <input type="password" id="auth-pass" placeholder="Access Key">
-                    </div>
-                    <button class="btn-primary btn-block" id="btn-login">
-                        ESTABLISH LINK <i class='bx bx-right-arrow-alt'></i>
-                    </button>
-
-                    <div class="google-divider">OR</div>
-
-                    <button class="btn-google" id="btn-google">
-                        <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="G"
-                            style="width:18px">
-                        Continue with Google
-                    </button>
                     <div class="auth-footer">
                         <p id="auth-msg">Secure Connection Required</p>
                     </div>
@@ -437,36 +417,40 @@
                 </div>
             </section>
 
+            <!-- ===== SETTINGS VIEW ===== -->
+            <section class="view view-settings" id="view-settings">
+                <div class="settings-container">
+                    <header class="settings-header">
+                        <button class="back-link" id="settings-back"><i class='bx bx-left-arrow-alt'></i>
+                            Dashboard</button>
+                        <h2>Agent Profile Settings</h2>
+                    </header>
+
+                    <div class="settings-card">
+                        <div class="settings-item">
+                            <label>Agent Codename</label>
+                            <div class="input-group">
+                                <i class='bx bxs-user-detail'></i>
+                                <input type="text" id="settings-username" placeholder="New Codename">
+                            </div>
+                            <p class="help-text">Changing your codename will migrate your progress data to the new
+                                record.</p>
+                        </div>
+
+                        <button class="btn-primary" id="btn-save-settings">
+                            UPDATE PROFILE <i class='bx bx-save'></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
     <!-- OVERLAY for mobile sidebar -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <!-- ===== SETTINGS VIEW ===== -->
-    <section class="view view-settings" id="view-settings">
-        <div class="settings-container">
-            <header class="settings-header">
-                <button class="back-link" id="settings-back"><i class='bx bx-left-arrow-alt'></i> Dashboard</button>
-                <h2>Agent Profile Settings</h2>
-            </header>
 
-            <div class="settings-card">
-                <div class="settings-item">
-                    <label>Agent Codename</label>
-                    <div class="input-group">
-                        <i class='bx bxs-user-detail'></i>
-                        <input type="text" id="settings-username" placeholder="New Codename">
-                    </div>
-                    <p class="help-text">Changing your codename will migrate your progress data to the new record.</p>
-                </div>
-
-                <button class="btn-primary" id="btn-save-settings">
-                    UPDATE PROFILE <i class='bx bx-save'></i>
-                </button>
-            </div>
-        </div>
-    </section>
 
 
     <div id="modal-overlay">
