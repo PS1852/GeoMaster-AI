@@ -16,7 +16,7 @@ const CONFIG = {
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
     STORAGE_KEY: 'geomaster_ai_save',
-    SYNC_BUCKET: 'https://kvdb.io/A4Qp4A7yv9q7q7q7q7q7q7/', // Global Nexus Relay
+    SYNC_BUCKET: 'https://kvdb.io/geomaster_proto_v2_99x/', // Private Secure Nexus Bucket
     GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com',
     SYSTEM_KEY: ['sk-or-v1-', '1134e069', '543d59a9', '3c804e37', '1d0a4ff5', '081d6a01', '95905f94', '69947b29', 'ff69e580'].join('')
 };
@@ -56,7 +56,7 @@ function saveSave(data) {
 
         // Background Cloud Push
         if (currentGoogleSub && !currentUser.startsWith('Agent_')) {
-            NexusCloud.push(currentUser, json);
+            NexusCloud.push(currentGoogleSub, json);
         }
     } catch (e) { }
 }
@@ -75,22 +75,27 @@ const NexusCloud = {
             await fetch(`${CONFIG.SYNC_BUCKET}map_${sub}`, { method: 'POST', body: username });
         } catch (e) { }
     },
-    // Progress: Username -> Data
-    push: async (username, data) => {
+    // Progress: GoogleID -> Data
+    push: async (googleId, data) => {
         const syncEl = $('#sync-status');
-        if (syncEl) syncEl.classList.add('active');
+        if (syncEl) {
+            syncEl.classList.add('active');
+            syncEl.title = "Sending to Nexus Cloud...";
+        }
         try {
-            // Include timestamp for conflict resolution
             const payload = JSON.stringify({ data, ts: Date.now() });
-            await fetch(`${CONFIG.SYNC_BUCKET}save_${username}`, { method: 'POST', body: payload });
-            setTimeout(() => { if (syncEl) syncEl.classList.remove('active'); }, 1500);
+            await fetch(`${CONFIG.SYNC_BUCKET}save_${googleId}`, { method: 'POST', body: payload });
+            setTimeout(() => { if (syncEl) syncEl.classList.remove('active'); }, 2000);
         } catch (e) { }
     },
-    pull: async (username) => {
+    pull: async (googleId) => {
         const syncEl = $('#sync-status');
-        if (syncEl) syncEl.classList.add('active');
+        if (syncEl) {
+            syncEl.classList.add('active');
+            syncEl.title = "Syncing with Nexus Cloud...";
+        }
         try {
-            const res = await fetch(`${CONFIG.SYNC_BUCKET}save_${username}`);
+            const res = await fetch(`${CONFIG.SYNC_BUCKET}save_${googleId}?_=` + Date.now());
             if (syncEl) syncEl.classList.remove('active');
             if (!res.ok) return null;
             const remote = await res.json();
@@ -1311,8 +1316,9 @@ function renderGButton() {
 
 // ===================== AUTH LOGIC =====================
 function handleAuth() {
-    return new Promise(resolve => {
+    return new Promise(async (resolve) => {
         const lastUser = localStorage.getItem('geo_last_user');
+        const lastSub = localStorage.getItem('geo_last_sub');
 
         const finalizeLogin = (user) => {
             loginUser(user);
@@ -1331,28 +1337,37 @@ function handleAuth() {
             };
         }
 
-        // Setup GIS in background
+        // 1. If we have a cached sub, sync IMMEDIATELY during boot
+        if (lastSub) {
+            currentGoogleSub = lastSub;
+            const cloudSave = await NexusCloud.pull(lastSub);
+            if (cloudSave && lastUser) {
+                localStorage.setItem(CONFIG.STORAGE_KEY + '_' + lastUser, cloudSave);
+            }
+        }
+
+        // 2. Ghost Login (Quick recovery)
+        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
+            finalizeLogin(lastUser);
+        }
+
+        // 3. Deep Sync via GIS
         initGIS(async (response) => {
             const payload = decodeJWT(response.credential);
             if (payload && payload.sub) {
                 currentGoogleSub = payload.sub;
                 localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                // 1. Check Identity Registry (Cloud)
-                let finalName = localStorage.getItem('geo_map_' + payload.sub);
-                if (!finalName) {
-                    finalName = await NexusCloud.getMap(payload.sub);
-                }
-
+                // Get name from cloud mapping or fallback to google name
+                let finalName = await NexusCloud.getMap(payload.sub);
                 if (!finalName) {
                     finalName = payload.name.replace(/\s/g, '_');
                     NexusCloud.setMap(payload.sub, finalName);
                 }
-
                 localStorage.setItem('geo_map_' + payload.sub, finalName);
 
-                // 2. Check Progress Registry (Cloud vs Local)
-                const cloudSave = await NexusCloud.pull(finalName);
+                // Pull absolute latest save using Google ID
+                const cloudSave = await NexusCloud.pull(payload.sub);
                 if (cloudSave) {
                     localStorage.setItem(CONFIG.STORAGE_KEY + '_' + finalName, cloudSave);
                 }
@@ -1361,11 +1376,7 @@ function handleAuth() {
             }
         });
 
-        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
-            // Even if we have a local user, let GIS finalize in background to sync
-            finalizeLogin(lastUser);
-        } else {
-            // No saved session, show Auth Screen
+        if (!lastUser) {
             if ($('#splash-screen')) $('#splash-screen').classList.add('hidden');
             const authScreen = $('#auth-screen');
             if (authScreen) {
