@@ -44,6 +44,10 @@ function initBroadcastChannel() {
                     persistLocalSave(save);
                     updateSidebarStats();
                 }
+            } else if (event.data.type === 'nameChange' && event.data.googleId === currentGoogleSub) {
+                console.log('📨 Name changed in another browser:', event.data.newName);
+                currentUser = event.data.newName;
+                updateSidebarStats();
             }
         };
         console.log('✅ BroadcastChannel ready for same-device sync');
@@ -1443,8 +1447,14 @@ function initEvents() {
                     localStorage.setItem('geo_last_user', newName);
                     if (currentGoogleSub) {
                         localStorage.setItem('geo_map_' + currentGoogleSub, newName);
-                        NexusCloud.setMap(currentGoogleSub, newName);
-                        // Push data to the GoogleID slot immediately
+                        // Broadcast name change to other tabs/browsers on this device
+                        if (broadcastChannel) {
+                            broadcastChannel.postMessage({
+                                type: 'nameChange',
+                                googleId: currentGoogleSub,
+                                newName: newName
+                            });
+                        }
                         NexusCloud.push(currentGoogleSub, JSON.stringify(save));
                     }
                     currentUser = newName;
