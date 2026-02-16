@@ -102,11 +102,23 @@ function startNameSyncPolling() {
     setInterval(async () => {
         try {
             const backendName = await NexusCloud.getName(currentGoogleSub);
+            console.log('🔍 Polling: current=' + currentUser + ', backend=' + backendName);
             if (backendName && backendName !== currentUser) {
                 console.log('📝 Name changed on another device, updating to:', backendName);
+                
+                // Migrate save data from old name to new name
+                const oldKey = CONFIG.STORAGE_KEY + '_' + currentUser;
+                const newKey = CONFIG.STORAGE_KEY + '_' + backendName;
+                const oldData = localStorage.getItem(oldKey);
+                
+                if (oldData) {
+                    localStorage.setItem(newKey, oldData);
+                }
+                
                 currentUser = backendName;
                 localStorage.setItem('geo_last_user', backendName);
                 updateSidebarStats();
+                
                 // Broadcast to other tabs
                 if (broadcastChannel) {
                     broadcastChannel.postMessage({
@@ -117,7 +129,7 @@ function startNameSyncPolling() {
                 }
             }
         } catch (e) {
-            // Silent fail - backend might be unavailable
+            console.error('Name polling error:', e);
         }
     }, 3000); // Check every 3 seconds
 }
