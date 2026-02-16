@@ -1450,7 +1450,7 @@ function initGIS(callback) {
             google.accounts.id.initialize({
                 client_id: CONFIG.GOOGLE_CLIENT_ID,
                 callback: callback,
-                auto_select: false,
+                auto_select: true,
                 cancel_on_tap_outside: true
             });
             gisLoaded = true;
@@ -1479,7 +1479,6 @@ function renderGButton() {
 function handleAuth() {
     return new Promise(async (resolve) => {
         const lastUser = localStorage.getItem('geo_last_user');
-        const lastSub = localStorage.getItem('geo_last_sub');
         let hasResolved = false;
         initialCloudHydrated = false;
 
@@ -1495,13 +1494,12 @@ function handleAuth() {
         };
 
         const finalizeLogin = (user) => {
+            if (hasResolved) return;
+            hasResolved = true;
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
             if (authScreen) authScreen.classList.add('hidden');
-            if (!hasResolved) {
-                hasResolved = true;
-                resolve();
-            }
+            resolve();
         };
 
         // Guest Login Handler
@@ -1524,7 +1522,8 @@ function handleAuth() {
                 // Get name from cloud mapping or fallback to google name
                 let finalName = await NexusCloud.getMap(payload.sub);
                 if (!finalName) {
-                    finalName = payload.name.replace(/\s/g, '_');
+                    const cleanLast = (lastUser && lastUser !== 'null' && lastUser !== 'undefined') ? lastUser : null;
+                    finalName = cleanLast || payload.name.replace(/\s/g, '_');
                     NexusCloud.setMap(payload.sub, finalName);
                 }
                 localStorage.setItem('geo_map_' + payload.sub, finalName);
@@ -1534,26 +1533,15 @@ function handleAuth() {
             }
         });
 
-        // 1. Fast recovery only if profile is already linked to a Google sub.
-        if (lastSub && lastSub !== 'null' && lastSub !== 'undefined') {
-            currentGoogleSub = lastSub;
-            const mappedUser = localStorage.getItem('geo_map_' + lastSub);
-            const bootUser = (mappedUser && mappedUser !== 'null' && mappedUser !== 'undefined') ? mappedUser : lastUser;
-            if (bootUser && bootUser !== 'null' && bootUser !== 'undefined') {
-                await hydrateLinkedAccount(bootUser, lastSub, [lastUser]);
-                finalizeLogin(bootUser);
-                return;
-            }
-        }
-
-        // 2. If we have local-only history without Google sub, force account linking.
-        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
-            showAuth('Link your Google account to restore unified cross-device stats.');
+        // Keep guest users frictionless.
+        if (lastUser && lastUser.startsWith('Agent_')) {
+            initialCloudHydrated = true;
+            finalizeLogin(lastUser);
             return;
         }
 
-        // 3. New user flow.
-        showAuth('Encrypted Auth Link Active');
+        // Always verify Google identity for synced profiles to avoid stale per-browser sub drift.
+        showAuth('Sign in with Google to sync one shared profile across all devices.');
     });
 }
 
