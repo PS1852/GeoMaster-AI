@@ -99,9 +99,10 @@ function canCloudSync() {
 let cloudPushTimer = null;
 let cloudSyncTimer = null;
 let cloudSyncInFlight = false;
+let initialCloudHydrated = false;
 
 function queueCloudPush() {
-    if (!canCloudSync()) return;
+    if (!canCloudSync() || !initialCloudHydrated) return;
     clearTimeout(cloudPushTimer);
     cloudPushTimer = setTimeout(() => {
         NexusCloud.push(currentGoogleSub, JSON.stringify(save));
@@ -113,6 +114,7 @@ async function syncCloudNow() {
     cloudSyncInFlight = true;
     try {
         const remote = await NexusCloud.pull(currentGoogleSub);
+        initialCloudHydrated = true;
         if (!remote || !remote.save) return;
 
         const merged = mergeSaves(save, remote.save);
@@ -141,8 +143,55 @@ function saveSave(data) {
     try {
         save = normalizeSaveData(data);
         persistLocalSave(save);
+        if (canCloudSync() && !initialCloudHydrated) return;
         queueCloudPush();
     } catch (e) { }
+}
+
+function setSyncIndicator(active, title) {
+    const syncEl = $('#sync-status');
+    if (!syncEl) return;
+    if (active) {
+        syncEl.classList.add('active');
+        if (title) syncEl.title = title;
+    } else {
+        syncEl.classList.remove('active');
+    }
+}
+
+async function cloudPullSlot(slotKey, showIndicator = true) {
+    if (showIndicator) setSyncIndicator(true, "Syncing with Nexus Cloud...");
+    try {
+        const res = await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}?_=` + Date.now());
+        if (showIndicator) setSyncIndicator(false);
+        if (!res.ok) return null;
+        const raw = await res.text();
+        if (!raw) return null;
+        let parsed = null;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (e) {
+            return { save: parseSaveData(raw), ts: 0 };
+        }
+        if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
+            return { save: parseSaveData(parsed.data), ts: Number(parsed.ts) || 0 };
+        }
+        return { save: parseSaveData(parsed), ts: Number(parsed?.ts) || 0 };
+    } catch (e) {
+        if (showIndicator) setSyncIndicator(false);
+        return null;
+    }
+}
+
+async function cloudPushSlot(slotKey, data, showIndicator = true) {
+    if (showIndicator) setSyncIndicator(true, "Sending to Nexus Cloud...");
+    try {
+        const payload = JSON.stringify({ data, ts: Date.now() });
+        await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}`, { method: 'POST', body: payload });
+        if (showIndicator) setTimeout(() => setSyncIndicator(false), 2000);
+    } catch (e) {
+        if (showIndicator) setSyncIndicator(false);
+    }
 }
 
 // ===================== NEXUS CLOUD SYNC =====================
@@ -161,48 +210,60 @@ const NexusCloud = {
     },
     // Progress: GoogleID -> Data
     push: async (googleId, data) => {
-        const syncEl = $('#sync-status');
-        if (syncEl) {
-            syncEl.classList.add('active');
-            syncEl.title = "Sending to Nexus Cloud...";
-        }
-        try {
-            const payload = JSON.stringify({ data, ts: Date.now() });
-            await fetch(`${CONFIG.SYNC_BUCKET}save_${googleId}`, { method: 'POST', body: payload });
-            setTimeout(() => { if (syncEl) syncEl.classList.remove('active'); }, 2000);
-        } catch (e) { }
+        await cloudPushSlot(`save_${googleId}`, data, true);
     },
     pull: async (googleId) => {
-        const syncEl = $('#sync-status');
-        if (syncEl) {
-            syncEl.classList.add('active');
-            syncEl.title = "Syncing with Nexus Cloud...";
-        }
-        try {
-            const res = await fetch(`${CONFIG.SYNC_BUCKET}save_${googleId}?_=` + Date.now());
-            if (syncEl) syncEl.classList.remove('active');
-            if (!res.ok) return null;
-            const raw = await res.text();
-            if (!raw) return null;
-            let parsed = null;
-            try {
-                parsed = JSON.parse(raw);
-            } catch (e) {
-                return { save: parseSaveData(raw), ts: 0 };
-            }
-
-            // Current payload format: { data: "<json string>", ts: number }
-            if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
-                return { save: parseSaveData(parsed.data), ts: Number(parsed.ts) || 0 };
-            }
-            // Backward compatibility if save object/string is stored directly.
-            return { save: parseSaveData(parsed), ts: Number(parsed?.ts) || 0 };
-        } catch (e) {
-            if (syncEl) syncEl.classList.remove('active');
-            return null;
-        }
+        return cloudPullSlot(`save_${googleId}`, true);
+    },
+    pullLegacy: async (username) => {
+        if (!username) return null;
+        return cloudPullSlot(`save_${username}`, false);
+    },
+    pushLegacy: async (username, data) => {
+        if (!username) return;
+        await cloudPushSlot(`save_${username}`, data, false);
     }
 };
+
+async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
+    const legacyNames = [...new Set([username, ...(extraUsernames || [])].filter(Boolean))];
+    let merged = loadSave(username);
+    legacyNames.forEach((name) => {
+        if (name !== username) merged = mergeSaves(merged, loadSave(name));
+    });
+
+    const pulls = [NexusCloud.pull(googleSub), ...legacyNames.map((name) => NexusCloud.pullLegacy(name))];
+    const [remotePrimary, ...legacyRemotes] = await Promise.all(pulls);
+
+    if (remotePrimary && remotePrimary.save) merged = mergeSaves(merged, remotePrimary.save);
+    legacyRemotes.forEach((remoteLegacy) => {
+        if (remoteLegacy && remoteLegacy.save) merged = mergeSaves(merged, remoteLegacy.save);
+    });
+
+    merged = normalizeSaveData(merged);
+    localStorage.setItem(CONFIG.STORAGE_KEY + '_' + username, JSON.stringify(merged));
+    legacyNames.forEach((name) => {
+        if (name !== username) {
+            localStorage.setItem(CONFIG.STORAGE_KEY + '_' + name, JSON.stringify(merged));
+        }
+    });
+    initialCloudHydrated = true;
+
+    const mergedJson = JSON.stringify(merged);
+    const primaryJson = JSON.stringify(normalizeSaveData((remotePrimary && remotePrimary.save) || getDefaultSave()));
+    if (mergedJson !== primaryJson) {
+        await NexusCloud.push(googleSub, mergedJson);
+    }
+    await Promise.all(legacyNames.map(async (name, idx) => {
+        const remoteLegacy = legacyRemotes[idx];
+        if (remoteLegacy && remoteLegacy.save) {
+            const legacyJson = JSON.stringify(normalizeSaveData(remoteLegacy.save));
+            if (legacyJson !== mergedJson) await NexusCloud.pushLegacy(name, mergedJson);
+        }
+    }));
+
+    return merged;
+}
 
 // ===================== STATE =====================
 let allCountries = (typeof ALL_COUNTRIES_DATA !== 'undefined') ? ALL_COUNTRIES_DATA : [];
@@ -1394,6 +1455,7 @@ function initGIS(callback) {
             });
             gisLoaded = true;
             renderGButton();
+            try { google.accounts.id.prompt(); } catch (e) { }
         } catch (e) { console.warn('GIS error:', e); }
     } else {
         setTimeout(() => initGIS(callback), 150);
@@ -1419,11 +1481,22 @@ function handleAuth() {
         const lastUser = localStorage.getItem('geo_last_user');
         const lastSub = localStorage.getItem('geo_last_sub');
         let hasResolved = false;
+        initialCloudHydrated = false;
+
+        const authScreen = $('#auth-screen');
+        const splash = $('#splash-screen');
+        const authMsg = $('#auth-msg');
+
+        const showAuth = (msg) => {
+            if (splash) splash.classList.add('hidden');
+            if (authMsg && msg) authMsg.textContent = msg;
+            if (authScreen) authScreen.classList.remove('hidden');
+            setTimeout(renderGButton, 100);
+        };
 
         const finalizeLogin = (user) => {
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
-            const authScreen = $('#auth-screen');
             if (authScreen) authScreen.classList.add('hidden');
             if (!hasResolved) {
                 hasResolved = true;
@@ -1436,22 +1509,9 @@ function handleAuth() {
         if (guestBtn) {
             guestBtn.onclick = () => {
                 const rng = Math.floor(1000 + Math.random() * 9000);
+                initialCloudHydrated = true;
                 finalizeLogin('Agent_' + rng);
             };
-        }
-
-        // 1. If we have a cached sub, sync IMMEDIATELY during boot
-        if (lastSub) {
-            currentGoogleSub = lastSub;
-            const cloudSave = await NexusCloud.pull(lastSub);
-            if (cloudSave && cloudSave.save && lastUser) {
-                localStorage.setItem(CONFIG.STORAGE_KEY + '_' + lastUser, JSON.stringify(cloudSave.save));
-            }
-        }
-
-        // 2. Ghost Login (Quick recovery)
-        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
-            finalizeLogin(lastUser);
         }
 
         // 3. Deep Sync via GIS
@@ -1468,30 +1528,40 @@ function handleAuth() {
                     NexusCloud.setMap(payload.sub, finalName);
                 }
                 localStorage.setItem('geo_map_' + payload.sub, finalName);
-
-                // Pull absolute latest save using Google ID
-                const cloudSave = await NexusCloud.pull(payload.sub);
-                if (cloudSave && cloudSave.save) {
-                    localStorage.setItem(CONFIG.STORAGE_KEY + '_' + finalName, JSON.stringify(cloudSave.save));
-                }
+                await hydrateLinkedAccount(finalName, payload.sub, [lastUser]);
 
                 finalizeLogin(finalName);
             }
         });
 
-        if (!lastUser) {
-            if ($('#splash-screen')) $('#splash-screen').classList.add('hidden');
-            const authScreen = $('#auth-screen');
-            if (authScreen) {
-                authScreen.classList.remove('hidden');
-                setTimeout(renderGButton, 100);
+        // 1. Fast recovery only if profile is already linked to a Google sub.
+        if (lastSub && lastSub !== 'null' && lastSub !== 'undefined') {
+            currentGoogleSub = lastSub;
+            const mappedUser = localStorage.getItem('geo_map_' + lastSub);
+            const bootUser = (mappedUser && mappedUser !== 'null' && mappedUser !== 'undefined') ? mappedUser : lastUser;
+            if (bootUser && bootUser !== 'null' && bootUser !== 'undefined') {
+                await hydrateLinkedAccount(bootUser, lastSub, [lastUser]);
+                finalizeLogin(bootUser);
+                return;
             }
         }
+
+        // 2. If we have local-only history without Google sub, force account linking.
+        if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
+            showAuth('Link your Google account to restore unified cross-device stats.');
+            return;
+        }
+
+        // 3. New user flow.
+        showAuth('Encrypted Auth Link Active');
     });
 }
 
 function loginUser(username) {
     currentUser = username;
+    if (!currentGoogleSub || currentUser.startsWith('Agent_')) {
+        initialCloudHydrated = true;
+    }
     save = loadSave(username);
 
     // Update UI
@@ -1501,7 +1571,7 @@ function loginUser(username) {
     // Initialize stats
     updateSidebarStats();
     startCloudSync();
-    syncCloudNow();
+    if (canCloudSync()) syncCloudNow();
 }
 
 // ===================== SPLASH & BOOT =====================
