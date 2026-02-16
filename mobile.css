@@ -252,4 +252,24 @@
         padding: 0.6rem 0.8rem;
         margin-bottom: 0.5rem;
     }
+    /* --- AUTH SCREEN MOBILE --- */
+    #auth-screen .auth-inner {
+        padding: 1.5rem !important;
+        width: 90% !important;
+        max-width: 400px;
+    }
+    #auth-screen .auth-logo {
+        margin-bottom: 1rem;
+    }
+    #auth-screen h1 {
+        font-size: 1.8rem !important;
+    }
+    #google-btn-container {
+        transform: scale(0.9);
+        transform-origin: center;
+    }
+    .btn-guest {
+        padding: 0.75rem !important;
+        font-size: 0.9rem !important;
+    }
 }

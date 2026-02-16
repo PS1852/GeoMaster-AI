@@ -16,6 +16,7 @@ const CONFIG = {
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
     STORAGE_KEY: 'geomaster_ai_save',
+    SYNC_BUCKET: 'https://kvdb.io/A4Qp4A7yv9q7q7q7q7q7q7/', // Global Nexus Relay
     GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com',
     SYSTEM_KEY: ['sk-or-v1-', '1134e069', '543d59a9', '3c804e37', '1d0a4ff5', '081d6a01', '95905f94', '69947b29', 'ff69e580'].join('')
 };
@@ -49,8 +50,54 @@ function loadSave(username) {
 
 function saveSave(data) {
     if (!currentUser) return;
-    try { localStorage.setItem(CONFIG.STORAGE_KEY + '_' + currentUser, JSON.stringify(data)); } catch (e) { }
+    try {
+        const json = JSON.stringify(data);
+        localStorage.setItem(CONFIG.STORAGE_KEY + '_' + currentUser, json);
+
+        // Background Cloud Push
+        if (currentGoogleSub && !currentUser.startsWith('Agent_')) {
+            NexusCloud.push(currentUser, json);
+        }
+    } catch (e) { }
 }
+
+// ===================== NEXUS CLOUD SYNC =====================
+const NexusCloud = {
+    // Identity mapping: Sub -> Username
+    getMap: async (sub) => {
+        try {
+            const res = await fetch(`${CONFIG.SYNC_BUCKET}map_${sub}`);
+            return res.ok ? await res.text() : null;
+        } catch (e) { return null; }
+    },
+    setMap: async (sub, username) => {
+        try {
+            await fetch(`${CONFIG.SYNC_BUCKET}map_${sub}`, { method: 'POST', body: username });
+        } catch (e) { }
+    },
+    // Progress: Username -> Data
+    push: async (username, data) => {
+        const syncEl = $('#sync-status');
+        if (syncEl) syncEl.classList.add('active');
+        try {
+            // Include timestamp for conflict resolution
+            const payload = JSON.stringify({ data, ts: Date.now() });
+            await fetch(`${CONFIG.SYNC_BUCKET}save_${username}`, { method: 'POST', body: payload });
+            setTimeout(() => { if (syncEl) syncEl.classList.remove('active'); }, 1500);
+        } catch (e) { }
+    },
+    pull: async (username) => {
+        const syncEl = $('#sync-status');
+        if (syncEl) syncEl.classList.add('active');
+        try {
+            const res = await fetch(`${CONFIG.SYNC_BUCKET}save_${username}`);
+            if (syncEl) syncEl.classList.remove('active');
+            if (!res.ok) return null;
+            const remote = await res.json();
+            return remote.data;
+        } catch (e) { return null; }
+    }
+};
 
 // ===================== STATE =====================
 let allCountries = (typeof ALL_COUNTRIES_DATA !== 'undefined') ? ALL_COUNTRIES_DATA : [];
@@ -1147,6 +1194,9 @@ function initEvents() {
                     localStorage.setItem('geo_last_user', newName);
                     if (currentGoogleSub) {
                         localStorage.setItem('geo_map_' + currentGoogleSub, newName);
+                        NexusCloud.setMap(currentGoogleSub, newName);
+                        // Push data to new slot immediately
+                        NexusCloud.push(newName, JSON.stringify(save));
                     }
                     currentUser = newName;
 
@@ -1162,8 +1212,8 @@ function initEvents() {
     $$('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (window.innerWidth <= 900) {
-                $('#sidebar').classList.remove('open');
-                $('#sidebar-overlay').classList.remove('visible');
+                $('#sidebar').classList.remove('active');
+                $('.sidebar-overlay').classList.remove('active');
             }
         });
     });
@@ -1282,24 +1332,37 @@ function handleAuth() {
         }
 
         // Setup GIS in background
-        initGIS((response) => {
+        initGIS(async (response) => {
             const payload = decodeJWT(response.credential);
             if (payload && payload.sub) {
                 currentGoogleSub = payload.sub;
                 localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                // Check for custom name mapping
-                const mappedUser = localStorage.getItem('geo_map_' + payload.sub);
-                const finalName = mappedUser || payload.name.replace(/\s/g, '_');
+                // 1. Check Identity Registry (Cloud)
+                let finalName = localStorage.getItem('geo_map_' + payload.sub);
+                if (!finalName) {
+                    finalName = await NexusCloud.getMap(payload.sub);
+                }
 
-                // If first time, establish mapping
-                if (!mappedUser) localStorage.setItem('geo_map_' + payload.sub, finalName);
+                if (!finalName) {
+                    finalName = payload.name.replace(/\s/g, '_');
+                    NexusCloud.setMap(payload.sub, finalName);
+                }
+
+                localStorage.setItem('geo_map_' + payload.sub, finalName);
+
+                // 2. Check Progress Registry (Cloud vs Local)
+                const cloudSave = await NexusCloud.pull(finalName);
+                if (cloudSave) {
+                    localStorage.setItem(CONFIG.STORAGE_KEY + '_' + finalName, cloudSave);
+                }
 
                 finalizeLogin(finalName);
             }
         });
 
         if (lastUser && lastUser !== 'null' && lastUser !== 'undefined') {
+            // Even if we have a local user, let GIS finalize in background to sync
             finalizeLogin(lastUser);
         } else {
             // No saved session, show Auth Screen
@@ -1307,7 +1370,6 @@ function handleAuth() {
             const authScreen = $('#auth-screen');
             if (authScreen) {
                 authScreen.classList.remove('hidden');
-                // Ensure button renders now that it's visible
                 setTimeout(renderGButton, 100);
             }
         }
@@ -1352,6 +1414,9 @@ async function boot() {
         splashFill.style.width = '50%';
         splashStatus.textContent = 'Downloading country database...';
         allCountries = await fetchCountries();
+
+        // Refresh sidebar now that we have real country counts
+        updateSidebarStats();
 
         // Step 3: Process
         splashFill.style.width = '80%';
