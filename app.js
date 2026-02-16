@@ -95,6 +95,33 @@ function startLocalStoragePolling() {
     }, 2000); // Check every 2 seconds
 }
 
+// Poll backend for name changes
+function startNameSyncPolling() {
+    if (!currentGoogleSub) return;
+    
+    setInterval(async () => {
+        try {
+            const backendName = await NexusCloud.getName(currentGoogleSub);
+            if (backendName && backendName !== currentUser) {
+                console.log('📝 Name changed on another device, updating to:', backendName);
+                currentUser = backendName;
+                localStorage.setItem('geo_last_user', backendName);
+                updateSidebarStats();
+                // Broadcast to other tabs
+                if (broadcastChannel) {
+                    broadcastChannel.postMessage({
+                        type: 'nameChange',
+                        googleId: currentGoogleSub,
+                        newName: backendName
+                    });
+                }
+            }
+        } catch (e) {
+            // Silent fail - backend might be unavailable
+        }
+    }, 3000); // Check every 3 seconds
+}
+
 // ===================== COUNTRY DATA =====================
 // [CORE DATA IS NOW LOADED FROM countries.data.js]
 
@@ -1726,6 +1753,7 @@ async function boot() {
         // Initialize local sync mechanisms
         initBroadcastChannel();
         startLocalStoragePolling();
+        startNameSyncPolling();
 
         // Ensure splash is visible for loading progress if it was hidden
         const splash = $('#splash-screen');
