@@ -15,6 +15,7 @@ const CONFIG = {
     LIVES: 3,
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
+    SYNC_PULL_INTERVAL_MS: 12000,
     STORAGE_KEY: 'geomaster_ai_save',
     SYNC_BUCKET: 'https://kvdb.io/geomaster_proto_v2_99x/', // Private Secure Nexus Bucket
     GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com',
@@ -31,33 +32,116 @@ function getDefaultSave() {
     return { xp: 0, level: 1, totalCorrect: 0, totalWrong: 0, bestStreak: 0, answered: { flag: [], capital: [], currency: [], population: [], border: [], emoji: [], sentinel: [] } };
 }
 
-function loadSave(username) {
+function normalizeSaveData(data) {
     const fallback = getDefaultSave();
-    if (!username) return fallback;
+    if (!data || typeof data !== 'object') return fallback;
+    const merged = { ...fallback, ...data, answered: { ...fallback.answered, ...(data.answered || {}) } };
+    Object.keys(fallback.answered).forEach((mode) => {
+        const vals = merged.answered[mode];
+        merged.answered[mode] = Array.isArray(vals) ? [...new Set(vals)] : [];
+    });
+    merged.xp = Math.max(0, Number(merged.xp) || 0);
+    merged.level = Math.max(1, Number(merged.level) || 1);
+    merged.totalCorrect = Math.max(0, Number(merged.totalCorrect) || 0);
+    merged.totalWrong = Math.max(0, Number(merged.totalWrong) || 0);
+    merged.bestStreak = Math.max(0, Number(merged.bestStreak) || 0);
+    while (merged.xp >= merged.level * CONFIG.XP_PER_LEVEL) merged.level++;
+    return merged;
+}
+
+function parseSaveData(raw) {
+    if (!raw) return null;
+    try {
+        if (typeof raw === 'string') return normalizeSaveData(JSON.parse(raw));
+        if (typeof raw === 'object') return normalizeSaveData(raw);
+    } catch (e) { }
+    return null;
+}
+
+function mergeSaves(localSave, remoteSave) {
+    const local = normalizeSaveData(localSave);
+    const remote = normalizeSaveData(remoteSave);
+    const merged = getDefaultSave();
+    merged.xp = Math.max(local.xp, remote.xp);
+    merged.level = Math.max(local.level, remote.level);
+    merged.totalCorrect = Math.max(local.totalCorrect, remote.totalCorrect);
+    merged.totalWrong = Math.max(local.totalWrong, remote.totalWrong);
+    merged.bestStreak = Math.max(local.bestStreak, remote.bestStreak);
+    Object.keys(merged.answered).forEach((mode) => {
+        const set = new Set([...(local.answered[mode] || []), ...(remote.answered[mode] || [])]);
+        merged.answered[mode] = [...set];
+    });
+    while (merged.xp >= merged.level * CONFIG.XP_PER_LEVEL) merged.level++;
+    return merged;
+}
+
+function loadSave(username) {
+    if (!username) return getDefaultSave();
     try {
         const key = CONFIG.STORAGE_KEY + '_' + username;
         const raw = localStorage.getItem(key);
-        if (raw && raw !== 'null' && raw !== 'undefined') {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                // Merge with fallback to ensure all properties exist
-                return { ...fallback, ...parsed, answered: { ...fallback.answered, ...(parsed.answered || {}) } };
-            }
-        }
+        if (raw && raw !== 'null' && raw !== 'undefined') return parseSaveData(raw) || getDefaultSave();
     } catch (e) { console.warn('Save corrupted, resetting.'); }
-    return fallback;
+    return getDefaultSave();
+}
+
+function persistLocalSave(data) {
+    if (!currentUser) return;
+    try {
+        localStorage.setItem(CONFIG.STORAGE_KEY + '_' + currentUser, JSON.stringify(normalizeSaveData(data)));
+    } catch (e) { }
+}
+
+function canCloudSync() {
+    return !!currentGoogleSub && !!currentUser && !currentUser.startsWith('Agent_');
+}
+
+let cloudPushTimer = null;
+let cloudSyncTimer = null;
+let cloudSyncInFlight = false;
+
+function queueCloudPush() {
+    if (!canCloudSync()) return;
+    clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(() => {
+        NexusCloud.push(currentGoogleSub, JSON.stringify(save));
+    }, 300);
+}
+
+async function syncCloudNow() {
+    if (!canCloudSync() || cloudSyncInFlight) return;
+    cloudSyncInFlight = true;
+    try {
+        const remote = await NexusCloud.pull(currentGoogleSub);
+        if (!remote || !remote.save) return;
+
+        const merged = mergeSaves(save, remote.save);
+        const mergedJson = JSON.stringify(merged);
+        const localJson = JSON.stringify(normalizeSaveData(save));
+        const remoteJson = JSON.stringify(normalizeSaveData(remote.save));
+        if (mergedJson !== localJson) {
+            save = merged;
+            persistLocalSave(save);
+            updateSidebarStats();
+        }
+        if (mergedJson !== remoteJson) {
+            await NexusCloud.push(currentGoogleSub, mergedJson);
+        }
+    } catch (e) { } finally { cloudSyncInFlight = false; }
+}
+
+function startCloudSync() {
+    clearInterval(cloudSyncTimer);
+    if (!canCloudSync()) return;
+    cloudSyncTimer = setInterval(() => { syncCloudNow(); }, CONFIG.SYNC_PULL_INTERVAL_MS);
 }
 
 function saveSave(data) {
     if (!currentUser) return;
     try {
-        const json = JSON.stringify(data);
-        localStorage.setItem(CONFIG.STORAGE_KEY + '_' + currentUser, json);
-
-        // Background Cloud Push
-        if (currentGoogleSub && !currentUser.startsWith('Agent_')) {
-            NexusCloud.push(currentGoogleSub, json);
-        }
+        save = normalizeSaveData(data);
+        persistLocalSave(save);
+        queueCloudPush();
     } catch (e) { }
 }
 
@@ -98,9 +182,25 @@ const NexusCloud = {
             const res = await fetch(`${CONFIG.SYNC_BUCKET}save_${googleId}?_=` + Date.now());
             if (syncEl) syncEl.classList.remove('active');
             if (!res.ok) return null;
-            const remote = await res.json();
-            return remote.data;
-        } catch (e) { return null; }
+            const raw = await res.text();
+            if (!raw) return null;
+            let parsed = null;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (e) {
+                return { save: parseSaveData(raw), ts: 0 };
+            }
+
+            // Current payload format: { data: "<json string>", ts: number }
+            if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
+                return { save: parseSaveData(parsed.data), ts: Number(parsed.ts) || 0 };
+            }
+            // Backward compatibility if save object/string is stored directly.
+            return { save: parseSaveData(parsed), ts: Number(parsed?.ts) || 0 };
+        } catch (e) {
+            if (syncEl) syncEl.classList.remove('active');
+            return null;
+        }
     }
 };
 
@@ -1159,10 +1259,9 @@ function initEvents() {
     $('#btn-reset').addEventListener('click', () => {
         NexusModal.confirm('WIPE DATA?', 'This will permanently ERASE all agent progress. This action cannot be undone.', (ok) => {
             if (ok) {
-                const key = CONFIG.STORAGE_KEY + '_' + currentUser;
-                localStorage.removeItem(key);
                 save = getDefaultSave();
-                location.reload();
+                saveSave(save);
+                setTimeout(() => location.reload(), 300);
             }
         }, true);
     });
@@ -1200,8 +1299,8 @@ function initEvents() {
                     if (currentGoogleSub) {
                         localStorage.setItem('geo_map_' + currentGoogleSub, newName);
                         NexusCloud.setMap(currentGoogleSub, newName);
-                        // Push data to new slot immediately
-                        NexusCloud.push(newName, JSON.stringify(save));
+                        // Push data to the GoogleID slot immediately
+                        NexusCloud.push(currentGoogleSub, JSON.stringify(save));
                     }
                     currentUser = newName;
 
@@ -1319,13 +1418,17 @@ function handleAuth() {
     return new Promise(async (resolve) => {
         const lastUser = localStorage.getItem('geo_last_user');
         const lastSub = localStorage.getItem('geo_last_sub');
+        let hasResolved = false;
 
         const finalizeLogin = (user) => {
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
             const authScreen = $('#auth-screen');
             if (authScreen) authScreen.classList.add('hidden');
-            resolve();
+            if (!hasResolved) {
+                hasResolved = true;
+                resolve();
+            }
         };
 
         // Guest Login Handler
@@ -1341,8 +1444,8 @@ function handleAuth() {
         if (lastSub) {
             currentGoogleSub = lastSub;
             const cloudSave = await NexusCloud.pull(lastSub);
-            if (cloudSave && lastUser) {
-                localStorage.setItem(CONFIG.STORAGE_KEY + '_' + lastUser, cloudSave);
+            if (cloudSave && cloudSave.save && lastUser) {
+                localStorage.setItem(CONFIG.STORAGE_KEY + '_' + lastUser, JSON.stringify(cloudSave.save));
             }
         }
 
@@ -1368,8 +1471,8 @@ function handleAuth() {
 
                 // Pull absolute latest save using Google ID
                 const cloudSave = await NexusCloud.pull(payload.sub);
-                if (cloudSave) {
-                    localStorage.setItem(CONFIG.STORAGE_KEY + '_' + finalName, cloudSave);
+                if (cloudSave && cloudSave.save) {
+                    localStorage.setItem(CONFIG.STORAGE_KEY + '_' + finalName, JSON.stringify(cloudSave.save));
                 }
 
                 finalizeLogin(finalName);
@@ -1397,6 +1500,8 @@ function loginUser(username) {
 
     // Initialize stats
     updateSidebarStats();
+    startCloudSync();
+    syncCloudNow();
 }
 
 // ===================== SPLASH & BOOT =====================
@@ -1462,3 +1567,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ========== GO ==========
 document.addEventListener('DOMContentLoaded', boot);
+window.addEventListener('focus', () => { syncCloudNow(); });
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') syncCloudNow();
+});
