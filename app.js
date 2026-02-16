@@ -1765,7 +1765,6 @@ async function boot() {
         // Initialize local sync mechanisms
         initBroadcastChannel();
         startLocalStoragePolling();
-        startNameSyncPolling();
 
         // Ensure splash is visible for loading progress if it was hidden
         const splash = $('#splash-screen');
