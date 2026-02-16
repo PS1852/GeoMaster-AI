@@ -1651,6 +1651,7 @@ function renderGButton() {
 function handleAuth() {
     return new Promise(async (resolve) => {
         const lastUser = localStorage.getItem('geo_last_user');
+        const lastSub = localStorage.getItem('geo_last_sub');
         let hasResolved = false;
         initialCloudHydrated = false;
 
@@ -1686,7 +1687,7 @@ function handleAuth() {
         }
 
         // Google Login Handler
-        initGIS(async (response) => {
+        const handleGoogleCredential = async (response) => {
             try {
                 const payload = decodeJWT(response.credential);
                 if (payload && payload.sub) {
@@ -1715,7 +1716,7 @@ function handleAuth() {
             } catch (e) {
                 console.error('Google callback error:', e);
             }
-        });
+        };
 
         // Keep guest users frictionless
         if (lastUser && lastUser.startsWith('Agent_')) {
@@ -1724,7 +1725,19 @@ function handleAuth() {
             return;
         }
 
+        // Keep previously linked Google users signed in on the same install
+        if (lastSub && lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) {
+            currentGoogleSub = lastSub;
+            const mappedName = localStorage.getItem('geo_map_' + lastSub);
+            const rememberedName = (mappedName && mappedName !== 'null' && mappedName !== 'undefined' && !mappedName.startsWith('Agent_'))
+                ? mappedName
+                : lastUser;
+            finalizeLogin(rememberedName);
+            return;
+        }
+
         // Show auth screen
+        initGIS(handleGoogleCredential);
         showAuth('Sign in with Google to sync one shared profile across all devices.');
     });
 }
