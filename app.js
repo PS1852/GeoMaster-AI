@@ -1633,27 +1633,33 @@ function handleAuth() {
 
         // Google Login Handler
         initGIS(async (response) => {
-            const payload = decodeJWT(response.credential);
-            if (payload && payload.sub) {
-                currentGoogleSub = payload.sub;
-                localStorage.setItem('geo_last_sub', currentGoogleSub);
+            try {
+                const payload = decodeJWT(response.credential);
+                if (payload && payload.sub) {
+                    currentGoogleSub = payload.sub;
+                    localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                // Use username from last login or Google name
-                const lastUser = localStorage.getItem('geo_last_user');
-                let finalName = (lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) 
-                    ? lastUser 
-                    : payload.name.replace(/\s/g, '_');
-                
-                localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
-                
-                // Load existing data if any
-                try {
-                    await hydrateLinkedAccount(finalName, currentGoogleSub, [lastUser]);
-                } catch (e) {
-                    console.log('Hydration skipped, continuing...');
+                    // Use username from last login or Google name
+                    const lastUser = localStorage.getItem('geo_last_user');
+                    let finalName = (lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) 
+                        ? lastUser 
+                        : payload.name.replace(/\s/g, '_');
+                    
+                    localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
+                    
+                    // Load existing data if any
+                    try {
+                        await hydrateLinkedAccount(finalName, currentGoogleSub, [lastUser]);
+                    } catch (e) {
+                        console.log('Hydration skipped, continuing...');
+                    }
+
+                    finalizeLogin(finalName);
+                } else {
+                    console.error('Invalid payload from Google');
                 }
-
-                finalizeLogin(finalName);
+            } catch (e) {
+                console.error('Google callback error:', e);
             }
         });
 
