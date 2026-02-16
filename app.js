@@ -101,6 +101,20 @@ let cloudSyncTimer = null;
 let cloudSyncInFlight = false;
 let initialCloudHydrated = false;
 
+// IMMEDIATE CLOUD PUSH - No debounce, forces sync right away
+async function forcePushCloud() {
+    if (!canCloudSync()) return;
+    try {
+        const saveJson = JSON.stringify(save);
+        await NexusCloud.push(currentGoogleSub, saveJson);
+        console.log('✅ Cloud Data PUSHED for user:', currentUser);
+        return true;
+    } catch (e) {
+        console.warn('⚠️ Cloud push failed:', e);
+        return false;
+    }
+}
+
 function queueCloudPush() {
     if (!canCloudSync() || !initialCloudHydrated) return;
     clearTimeout(cloudPushTimer);
@@ -136,6 +150,8 @@ function startCloudSync() {
     clearInterval(cloudSyncTimer);
     if (!canCloudSync()) return;
     cloudSyncTimer = setInterval(() => { syncCloudNow(); }, CONFIG.SYNC_PULL_INTERVAL_MS);
+    // IMPORTANT: Force an immediate sync on startup
+    setTimeout(() => { syncCloudNow(); }, 100);
 }
 
 function saveSave(data) {
@@ -164,9 +180,15 @@ async function cloudPullSlot(slotKey, showIndicator = true) {
     try {
         const res = await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}?_=` + Date.now());
         if (showIndicator) setSyncIndicator(false);
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn('⚠️ Cloud pull failed with status:', res.status, slotKey);
+            return null;
+        }
         const raw = await res.text();
-        if (!raw) return null;
+        if (!raw) {
+            console.log('ℹ️ No cloud data found for slot:', slotKey);
+            return null;
+        }
         let parsed = null;
         try {
             parsed = JSON.parse(raw);
@@ -174,10 +196,12 @@ async function cloudPullSlot(slotKey, showIndicator = true) {
             return { save: parseSaveData(raw), ts: 0 };
         }
         if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
+            console.log('✅ Cloud data pulled for slot:', slotKey);
             return { save: parseSaveData(parsed.data), ts: Number(parsed.ts) || 0 };
         }
         return { save: parseSaveData(parsed), ts: Number(parsed?.ts) || 0 };
     } catch (e) {
+        console.error('❌ Cloud pull error:', e.message, slotKey);
         if (showIndicator) setSyncIndicator(false);
         return null;
     }
@@ -187,9 +211,15 @@ async function cloudPushSlot(slotKey, data, showIndicator = true) {
     if (showIndicator) setSyncIndicator(true, "Sending to Nexus Cloud...");
     try {
         const payload = JSON.stringify({ data, ts: Date.now() });
-        await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}`, { method: 'POST', body: payload });
+        const res = await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}`, { method: 'POST', body: payload });
+        if (!res.ok) {
+            console.warn('⚠️ Cloud push failed with status:', res.status, slotKey);
+        } else {
+            console.log('✅ Cloud data pushed for slot:', slotKey);
+        }
         if (showIndicator) setTimeout(() => setSyncIndicator(false), 2000);
     } catch (e) {
+        console.error('❌ Cloud push error:', e.message, slotKey);
         if (showIndicator) setSyncIndicator(false);
     }
 }
@@ -664,6 +694,8 @@ class GameSession {
         // Level up
         while (save.xp >= save.level * CONFIG.XP_PER_LEVEL) { save.level++; }
         saveSave(save);
+        // CRITICAL FIX: Force cloud sync when user gets answer correct
+        if (canCloudSync()) forcePushCloud().catch(e => {});
     }
 
     miss() {
@@ -671,6 +703,8 @@ class GameSession {
         this.lives--;
         save.totalWrong++;
         saveSave(save);
+        // CRITICAL FIX: Force cloud sync when user gets answer wrong
+        if (canCloudSync()) forcePushCloud().catch(e => {});
     }
 
     markAnswered(cca3) {
@@ -681,6 +715,8 @@ class GameSession {
             }
         }
         saveSave(save);
+        // CRITICAL FIX: Force cloud sync when marking country as answered
+        if (canCloudSync()) forcePushCloud().catch(e => {});
     }
 }
 
@@ -1227,6 +1263,12 @@ function endGame() {
 
     showView('gameover');
     updateSidebarStats();
+    
+    // CRITICAL FIX: Force immediate cloud push when game ends
+    // Ensures data syncs across ALL devices with same Google account BEFORE app closes
+    if (canCloudSync()) {
+        forcePushCloud().catch(e => console.warn('Cloud sync on game end failed:', e));
+    }
 }
 
 
@@ -1559,7 +1601,13 @@ function loginUser(username) {
     // Initialize stats
     updateSidebarStats();
     startCloudSync();
-    if (canCloudSync()) syncCloudNow();
+    
+    // CRITICAL FIX: Immediately sync cloud data after login
+    // This ensures user gets their latest data across all devices
+    if (canCloudSync()) {
+        console.log('🔄 User logged in with Google. Starting cloud sync...');
+        syncCloudNow();
+    }
 }
 
 // ===================== SPLASH & BOOT =====================
@@ -1625,7 +1673,13 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ========== GO ==========
 document.addEventListener('DOMContentLoaded', boot);
-window.addEventListener('focus', () => { syncCloudNow(); });
+window.addEventListener('focus', () => { 
+    console.log('🔄 Window focused - syncing cloud data...');
+    syncCloudNow(); 
+});
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') syncCloudNow();
+    if (document.visibilityState === 'visible') {
+        console.log('🔄 App visible - syncing cloud data...');
+        syncCloudNow();
+    }
 });
