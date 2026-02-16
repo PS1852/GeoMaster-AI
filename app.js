@@ -300,11 +300,48 @@ const NexusCloud = {
     
     pullLegacy: async (username) => null,
     pushLegacy: async (username, data) => {},
-    getMap: async (sub) => null,
-    setMap: async (sub, username) => {}
+    
+    // Get stored username from backend
+    getName: async (googleId) => {
+        try {
+            if (!window.NAME_SYNC_URL) return null;
+            const res = await fetch(window.NAME_SYNC_URL + '/name/' + googleId);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.name) {
+                    console.log('✅ Retrieved name from backend:', data.name);
+                    return data.name;
+                }
+            }
+        } catch (e) {
+            console.log('Name sync backend unavailable');
+        }
+        return null;
+    },
+    
+    // Store username to backend
+    setName: async (googleId, name) => {
+        try {
+            if (!window.NAME_SYNC_URL) return;
+            await fetch(window.NAME_SYNC_URL + '/name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ googleId, name })
+            });
+            console.log('✅ Synced name to backend:', name);
+        } catch (e) {
+            console.log('Name sync failed, continuing locally');
+        }
+    }
 };
 
 async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
+    // Check if there's a backup name stored in backend
+    const backendName = await NexusCloud.getName(googleSub);
+    if (backendName) {
+        username = backendName;
+    }
+    
     // Load local data first
     let merged = loadSave(username);
     
@@ -1447,6 +1484,8 @@ function initEvents() {
                     localStorage.setItem('geo_last_user', newName);
                     if (currentGoogleSub) {
                         localStorage.setItem('geo_map_' + currentGoogleSub, newName);
+                        // Sync name to backend
+                        NexusCloud.setName(currentGoogleSub, newName);
                         // Broadcast name change to other tabs/browsers on this device
                         if (broadcastChannel) {
                             broadcastChannel.postMessage({
