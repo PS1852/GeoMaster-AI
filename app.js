@@ -519,7 +519,34 @@ function nextStandardRound() {
         case 'currency':
             $('#quiz-prompt').textContent = 'Which economy uses this currency?';
             const cur = Object.values(target.currencies)[0];
-            subject.innerHTML = cur.name + ' <span style="color:var(--amber)">(' + (cur.symbol || '?') + ')</span>';
+            let cName = cur.name || 'Unknown Currency';
+
+            // SANITIZE: Remove country name and adjectival forms from currency name
+            if (target.name && target.name.common) {
+                const countryBase = target.name.common;
+                // Create a pattern that matches the country name or its likely adjectival forms
+                // e.g. "Pakistan" -> matches "Pakistani", "Pakistan"
+                // e.g. "India" -> matches "Indian", "India"
+                const base = countryBase.replace(/ia$|an$|n$|i$|s$|e$|a$/gi, '');
+                if (base.length > 2) {
+                    const regex = new RegExp(base + '[a-z]*', 'gi');
+                    cName = cName.replace(regex, '').trim();
+                }
+                // Also remove the full common name just in case
+                cName = cName.replace(new RegExp(countryBase, 'gi'), '').trim();
+            }
+
+            // Secondary cleanup: remove leading/trailing common words like "of" or "-"
+            cName = cName.replace(/^of\s+|^-|^\s+|\s+$/gi, '').trim();
+            if (cName.length < 3) cName = cur.name; // Fallback if we shredded it too much
+
+            // Clean up symbols if they contain country codes (e.g. AU$ -> $)
+            let cSym = cur.symbol || '?';
+            if (cSym.length > 1 && /[A-Z]/.test(cSym)) {
+                cSym = cSym.replace(/[A-Z]{2,}/g, '').trim() || cSym;
+            }
+
+            subject.innerHTML = `<span style="text-transform: capitalize;">${cName}</span> <span style="color:var(--amber)">(${cSym})</span>`;
             break;
         case 'population':
             const isArea = game.subMode === 'area';
