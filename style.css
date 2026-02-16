@@ -2087,27 +2087,27 @@ img {
 @keyframes coin-pulse-glow {
     0% { 
         transform: scale(1) rotate(0deg); 
-        filter: drop-shadow(0 0 0px #22d3ee) drop-shadow(0 0 0px #a78bfa);
+        filter: drop-shadow(0 0 0px var(--cyan)) drop-shadow(0 0 0px var(--purple));
     }
     25% { 
         transform: scale(1.15) rotate(5deg); 
-        filter: drop-shadow(0 0 8px #22d3ee) drop-shadow(0 0 4px #06b6d4);
+        filter: drop-shadow(0 0 8px var(--cyan)) drop-shadow(0 0 4px #06b6d4);
     }
     50% { 
         transform: scale(1.2) rotate(0deg); 
-        filter: drop-shadow(0 0 12px #a78bfa) drop-shadow(0 0 6px #22d3ee);
+        filter: drop-shadow(0 0 12px var(--purple)) drop-shadow(0 0 6px var(--cyan));
     }
     75% { 
         transform: scale(1.15) rotate(-5deg); 
-        filter: drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 4px #a78bfa);
+        filter: drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 4px var(--purple));
     }
     100% { 
         transform: scale(1) rotate(0deg); 
-        filter: drop-shadow(0 0 0px #22d3ee) drop-shadow(0 0 0px #a78bfa);
+        filter: drop-shadow(0 0 0px var(--cyan)) drop-shadow(0 0 0px var(--purple));
     }
 }
 .bx-coin-stack {
-    color: #fbbf24 !important;
+    color: var(--cyan) !important;
     animation: coin-pulse-glow 2.5s infinite ease-in-out;
 }
 
