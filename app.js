@@ -266,33 +266,15 @@ function setSyncIndicator(active, title) {
     }
 }
 
-// ===================== CLOUD SYNC (localStorage-based for now) =====================
+// ===================== CLOUD SYNC (localStorage only) =====================
 // Simple cloud sync mechanism using localStorage and BroadcastChannel
-// For cross-device sync, we use a simple fetch-based approach to a backend endpoint
+// Each device has its own stats, synced within same device via BroadcastChannel
 const NexusCloud = {
     push: async (googleId, data) => {
-        // Always save to localStorage first
         try {
             localStorage.setItem('geomaster_cloud_' + googleId, typeof data === 'string' ? data : JSON.stringify(data));
             console.log('✅ Data saved locally for:', googleId);
-            
-            // Broadcast to other tabs on this device
             broadcastSaveUpdate();
-            
-            // Try to send to a backend if available
-            // This is optional - can be extended with a real backend later
-            if (typeof window.BACKEND_URL !== 'undefined') {
-                try {
-                    await fetch(window.BACKEND_URL + '/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: googleId,
-                            data: typeof data === 'string' ? JSON.parse(data) : data
-                        })
-                    }).catch(() => {}); // Silent fail if backend unavailable
-                } catch (e) {}
-            }
         } catch (e) {
             console.error('❌ Push failed:', e);
         }
@@ -300,27 +282,11 @@ const NexusCloud = {
     
     pull: async (googleId) => {
         try {
-            // First check localStorage
             const raw = localStorage.getItem('geomaster_cloud_' + googleId);
             if (raw) {
                 console.log('✅ Pulled data from localStorage');
                 return { save: parseSaveData(raw), ts: Date.now() };
             }
-            
-            // Try backend if available
-            if (typeof window.BACKEND_URL !== 'undefined') {
-                try {
-                    const res = await fetch(window.BACKEND_URL + '/load?userId=' + googleId);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.save) {
-                            console.log('✅ Pulled data from backend');
-                            return { save: data.save, ts: Date.now() };
-                        }
-                    }
-                } catch (e) {}
-            }
-            
             return null;
         } catch (e) {
             console.error('❌ Pull failed:', e);
