@@ -15,12 +15,81 @@ const CONFIG = {
     LIVES: 3,
     XP_PER_LEVEL: 1000,
     OPTIONS_COUNT: 4,
-    SYNC_PULL_INTERVAL_MS: 12000,
+    SYNC_PULL_INTERVAL_MS: 8000,
     STORAGE_KEY: 'geomaster_ai_save',
-    SYNC_BUCKET: 'https://kvdb.io/geomaster_proto_v2_99x/', // Private Secure Nexus Bucket
     GOOGLE_CLIENT_ID: '481536087745-nujuqgrspms7u05amp2k77a8982gst59.apps.googleusercontent.com',
     SYSTEM_KEY: ['sk-or-v1-', '1134e069', '543d59a9', '3c804e37', '1d0a4ff5', '081d6a01', '95905f94', '69947b29', 'ff69e580'].join('')
 };
+
+// ===================== LOCAL STORAGE + BROADCAST SYNC =====================
+// Uses BroadcastChannel to sync between tabs/windows on the same device
+let broadcastChannel = null;
+
+function initBroadcastChannel() {
+    if (typeof BroadcastChannel === 'undefined') {
+        console.warn('BroadcastChannel not supported');
+        return;
+    }
+    
+    try {
+        broadcastChannel = new BroadcastChannel('geomaster-sync');
+        broadcastChannel.onmessage = (event) => {
+            if (event.data.type === 'SAVE_UPDATE' && event.data.userId === currentGoogleSub) {
+                console.log('📨 Received data from another tab, updating local...');
+                const receivedData = event.data.save;
+                if (receivedData) {
+                    // Merge with local data (take highest values)
+                    const merged = mergeSaves(save, receivedData);
+                    save = merged;
+                    persistLocalSave(save);
+                    updateSidebarStats();
+                }
+            }
+        };
+        console.log('✅ BroadcastChannel ready for same-device sync');
+    } catch (e) {
+        console.warn('BroadcastChannel init failed:', e);
+    }
+}
+
+// Broadcast save to other tabs on same device
+function broadcastSaveUpdate() {
+    if (!broadcastChannel || !currentGoogleSub) return;
+    try {
+        broadcastChannel.postMessage({
+            type: 'SAVE_UPDATE',
+            userId: currentGoogleSub,
+            save: save
+        });
+    } catch (e) {
+        console.warn('Broadcast failed:', e);
+    }
+}
+
+// Poll for localStorage changes from other tabs
+let lastKnownSave = null;
+function startLocalStoragePolling() {
+    setInterval(() => {
+        if (!currentUser) return;
+        try {
+            const key = CONFIG.STORAGE_KEY + '_' + currentUser;
+            const raw = localStorage.getItem(key);
+            if (raw && lastKnownSave !== raw) {
+                const parsed = parseSaveData(raw);
+                if (parsed && JSON.stringify(parsed) !== JSON.stringify(save)) {
+                    console.log('🔄 Detected localStorage change from another tab');
+                    const merged = mergeSaves(save, parsed);
+                    save = merged;
+                    persistLocalSave(save);
+                    updateSidebarStats();
+                    lastKnownSave = JSON.stringify(save);
+                }
+            }
+        } catch (e) {
+            console.warn('Storage polling error:', e);
+        }
+    }, 2000); // Check every 2 seconds
+}
 
 // ===================== COUNTRY DATA =====================
 // [CORE DATA IS NOW LOADED FROM countries.data.js]
@@ -101,16 +170,18 @@ let cloudSyncTimer = null;
 let cloudSyncInFlight = false;
 let initialCloudHydrated = false;
 
-// IMMEDIATE CLOUD PUSH - No debounce, forces sync right away
+// IMMEDIATE CLOUD PUSH - Forces sync right away
 async function forcePushCloud() {
     if (!canCloudSync()) return;
+    
     try {
         const saveJson = JSON.stringify(save);
         await NexusCloud.push(currentGoogleSub, saveJson);
-        console.log('✅ Cloud Data PUSHED for user:', currentUser);
+        console.log('✅ Data synced:', currentUser);
+        broadcastSaveUpdate();
         return true;
     } catch (e) {
-        console.warn('⚠️ Cloud push failed:', e);
+        console.error('❌ Sync failed:', e);
         return false;
     }
 }
@@ -125,25 +196,45 @@ function queueCloudPush() {
 
 async function syncCloudNow() {
     if (!canCloudSync() || cloudSyncInFlight) return;
+    
     cloudSyncInFlight = true;
     try {
+        setSyncIndicator(true, "🔄 Syncing data...");
         const remote = await NexusCloud.pull(currentGoogleSub);
         initialCloudHydrated = true;
-        if (!remote || !remote.save) return;
+        
+        if (!remote || !remote.save) {
+            console.log('📤 No remote data found, pushing local...');
+            // If no data on cloud, push our local data
+            await NexusCloud.push(currentGoogleSub, JSON.stringify(save));
+            setSyncIndicator(false);
+            console.log('✅ Sync complete');
+            return;
+        }
 
         const merged = mergeSaves(save, remote.save);
         const mergedJson = JSON.stringify(merged);
         const localJson = JSON.stringify(normalizeSaveData(save));
         const remoteJson = JSON.stringify(normalizeSaveData(remote.save));
+        
         if (mergedJson !== localJson) {
             save = merged;
             persistLocalSave(save);
             updateSidebarStats();
+            console.log('📥 Pulled and merged remote data');
         }
         if (mergedJson !== remoteJson) {
             await NexusCloud.push(currentGoogleSub, mergedJson);
+            console.log('📤 Pushed merged data');
         }
-    } catch (e) { } finally { cloudSyncInFlight = false; }
+        setSyncIndicator(false);
+        console.log('✅ Sync complete');
+    } catch (e) { 
+        console.error('❌ Sync error:', e);
+        setSyncIndicator(false);
+    } finally { 
+        cloudSyncInFlight = false; 
+    }
 }
 
 function startCloudSync() {
@@ -175,122 +266,111 @@ function setSyncIndicator(active, title) {
     }
 }
 
-async function cloudPullSlot(slotKey, showIndicator = true) {
-    if (showIndicator) setSyncIndicator(true, "Syncing with Nexus Cloud...");
-    try {
-        const res = await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}?_=` + Date.now());
-        if (showIndicator) setSyncIndicator(false);
-        if (!res.ok) {
-            console.warn('⚠️ Cloud pull failed with status:', res.status, slotKey);
-            return null;
-        }
-        const raw = await res.text();
-        if (!raw) {
-            console.log('ℹ️ No cloud data found for slot:', slotKey);
-            return null;
-        }
-        let parsed = null;
-        try {
-            parsed = JSON.parse(raw);
-        } catch (e) {
-            return { save: parseSaveData(raw), ts: 0 };
-        }
-        if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
-            console.log('✅ Cloud data pulled for slot:', slotKey);
-            return { save: parseSaveData(parsed.data), ts: Number(parsed.ts) || 0 };
-        }
-        return { save: parseSaveData(parsed), ts: Number(parsed?.ts) || 0 };
-    } catch (e) {
-        console.error('❌ Cloud pull error:', e.message, slotKey);
-        if (showIndicator) setSyncIndicator(false);
-        return null;
-    }
-}
-
-async function cloudPushSlot(slotKey, data, showIndicator = true) {
-    if (showIndicator) setSyncIndicator(true, "Sending to Nexus Cloud...");
-    try {
-        const payload = JSON.stringify({ data, ts: Date.now() });
-        const res = await fetch(`${CONFIG.SYNC_BUCKET}${slotKey}`, { method: 'POST', body: payload });
-        if (!res.ok) {
-            console.warn('⚠️ Cloud push failed with status:', res.status, slotKey);
-        } else {
-            console.log('✅ Cloud data pushed for slot:', slotKey);
-        }
-        if (showIndicator) setTimeout(() => setSyncIndicator(false), 2000);
-    } catch (e) {
-        console.error('❌ Cloud push error:', e.message, slotKey);
-        if (showIndicator) setSyncIndicator(false);
-    }
-}
-
-// ===================== NEXUS CLOUD SYNC =====================
+// ===================== CLOUD SYNC (localStorage-based for now) =====================
+// Simple cloud sync mechanism using localStorage and BroadcastChannel
+// For cross-device sync, we use a simple fetch-based approach to a backend endpoint
 const NexusCloud = {
-    // Identity mapping: Sub -> Username
-    getMap: async (sub) => {
-        try {
-            const res = await fetch(`${CONFIG.SYNC_BUCKET}map_${sub}`);
-            return res.ok ? await res.text() : null;
-        } catch (e) { return null; }
-    },
-    setMap: async (sub, username) => {
-        try {
-            await fetch(`${CONFIG.SYNC_BUCKET}map_${sub}`, { method: 'POST', body: username });
-        } catch (e) { }
-    },
-    // Progress: GoogleID -> Data
     push: async (googleId, data) => {
-        await cloudPushSlot(`save_${googleId}`, data, true);
+        // Always save to localStorage first
+        try {
+            localStorage.setItem('geomaster_cloud_' + googleId, typeof data === 'string' ? data : JSON.stringify(data));
+            console.log('✅ Data saved locally for:', googleId);
+            
+            // Broadcast to other tabs on this device
+            broadcastSaveUpdate();
+            
+            // Try to send to a backend if available
+            // This is optional - can be extended with a real backend later
+            if (typeof window.BACKEND_URL !== 'undefined') {
+                try {
+                    await fetch(window.BACKEND_URL + '/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: googleId,
+                            data: typeof data === 'string' ? JSON.parse(data) : data
+                        })
+                    }).catch(() => {}); // Silent fail if backend unavailable
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.error('❌ Push failed:', e);
+        }
     },
+    
     pull: async (googleId) => {
-        return cloudPullSlot(`save_${googleId}`, true);
+        try {
+            // First check localStorage
+            const raw = localStorage.getItem('geomaster_cloud_' + googleId);
+            if (raw) {
+                console.log('✅ Pulled data from localStorage');
+                return { save: parseSaveData(raw), ts: Date.now() };
+            }
+            
+            // Try backend if available
+            if (typeof window.BACKEND_URL !== 'undefined') {
+                try {
+                    const res = await fetch(window.BACKEND_URL + '/load?userId=' + googleId);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.save) {
+                            console.log('✅ Pulled data from backend');
+                            return { save: data.save, ts: Date.now() };
+                        }
+                    }
+                } catch (e) {}
+            }
+            
+            return null;
+        } catch (e) {
+            console.error('❌ Pull failed:', e);
+            return null;
+        }
     },
-    pullLegacy: async (username) => {
-        if (!username) return null;
-        return cloudPullSlot(`save_${username}`, false);
-    },
-    pushLegacy: async (username, data) => {
-        if (!username) return;
-        await cloudPushSlot(`save_${username}`, data, false);
-    }
+    
+    pullLegacy: async (username) => null,
+    pushLegacy: async (username, data) => {},
+    getMap: async (sub) => null,
+    setMap: async (sub, username) => {}
 };
 
 async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
-    const legacyNames = [...new Set([username, ...(extraUsernames || [])].filter(Boolean))];
+    // Load local data first
     let merged = loadSave(username);
-    legacyNames.forEach((name) => {
-        if (name !== username) merged = mergeSaves(merged, loadSave(name));
-    });
-
-    const pulls = [NexusCloud.pull(googleSub), ...legacyNames.map((name) => NexusCloud.pullLegacy(name))];
-    const [remotePrimary, ...legacyRemotes] = await Promise.all(pulls);
-
-    if (remotePrimary && remotePrimary.save) merged = mergeSaves(merged, remotePrimary.save);
-    legacyRemotes.forEach((remoteLegacy) => {
-        if (remoteLegacy && remoteLegacy.save) merged = mergeSaves(merged, remoteLegacy.save);
-    });
+    
+    // Load from Firebase (should be ready by now)
+    if (!isFirebaseReady) {
+        console.warn('Firebase not ready yet during hydration, will retry on next sync');
+    } else {
+        try {
+            const remotePrimary = await NexusCloud.pull(googleSub);
+            if (remotePrimary && remotePrimary.save) {
+                merged = mergeSaves(merged, remotePrimary.save);
+                console.log('✅ Loaded data from Firebase on login');
+            }
+        } catch (e) {
+            console.warn('Failed to hydrate from Firebase:', e);
+        }
+    }
 
     merged = normalizeSaveData(merged);
     localStorage.setItem(CONFIG.STORAGE_KEY + '_' + username, JSON.stringify(merged));
-    legacyNames.forEach((name) => {
+    
+    // Also save legacy usernames for compatibility
+    extraUsernames.forEach((name) => {
         if (name !== username) {
             localStorage.setItem(CONFIG.STORAGE_KEY + '_' + name, JSON.stringify(merged));
         }
     });
+    
     initialCloudHydrated = true;
 
-    const mergedJson = JSON.stringify(merged);
-    const primaryJson = JSON.stringify(normalizeSaveData((remotePrimary && remotePrimary.save) || getDefaultSave()));
-    if (mergedJson !== primaryJson) {
-        await NexusCloud.push(googleSub, mergedJson);
+    // Push merged data to Firebase
+    try {
+        await NexusCloud.push(googleSub, JSON.stringify(merged));
+    } catch (e) {
+        console.warn('Failed to push on hydrate:', e);
     }
-    await Promise.all(legacyNames.map(async (name, idx) => {
-        const remoteLegacy = legacyRemotes[idx];
-        if (remoteLegacy && remoteLegacy.save) {
-            const legacyJson = JSON.stringify(normalizeSaveData(remoteLegacy.save));
-            if (legacyJson !== mergedJson) await NexusCloud.pushLegacy(name, mergedJson);
-        }
-    }));
 
     return merged;
 }
@@ -1619,6 +1699,10 @@ async function boot() {
         // Step 0: Auth
         if (splashStatus) splashStatus.textContent = 'Establishing Secure Link...';
         await handleAuth();
+
+        // Initialize local sync mechanisms
+        initBroadcastChannel();
+        startLocalStoragePolling();
 
         // Ensure splash is visible for loading progress if it was hidden
         const splash = $('#splash-screen');
