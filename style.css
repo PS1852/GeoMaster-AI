@@ -2085,13 +2085,30 @@ img {
     box-shadow: 0 0 10px rgba(34, 211, 238, 0.1);
 }
 @keyframes coin-pulse-glow {
-    0% { transform: scale(1); filter: drop-shadow(0 0 0px #f59e0b); }
-    50% { transform: scale(1.15); filter: drop-shadow(0 0 8px #f59e0b); }
-    100% { transform: scale(1); filter: drop-shadow(0 0 0px #f59e0b); }
+    0% { 
+        transform: scale(1) rotate(0deg); 
+        filter: drop-shadow(0 0 0px #22d3ee) drop-shadow(0 0 0px #a78bfa);
+    }
+    25% { 
+        transform: scale(1.15) rotate(5deg); 
+        filter: drop-shadow(0 0 8px #22d3ee) drop-shadow(0 0 4px #06b6d4);
+    }
+    50% { 
+        transform: scale(1.2) rotate(0deg); 
+        filter: drop-shadow(0 0 12px #a78bfa) drop-shadow(0 0 6px #22d3ee);
+    }
+    75% { 
+        transform: scale(1.15) rotate(-5deg); 
+        filter: drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 4px #a78bfa);
+    }
+    100% { 
+        transform: scale(1) rotate(0deg); 
+        filter: drop-shadow(0 0 0px #22d3ee) drop-shadow(0 0 0px #a78bfa);
+    }
 }
 .bx-coin-stack {
-    color: #f59e0b !important;
-    animation: coin-pulse-glow 2s infinite ease-in-out;
+    color: #fbbf24 !important;
+    animation: coin-pulse-glow 2.5s infinite ease-in-out;
 }
 
 
