@@ -338,19 +338,15 @@ async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
     // Load local data first
     let merged = loadSave(username);
     
-    // Load from Firebase (should be ready by now)
-    if (!isFirebaseReady) {
-        console.warn('Firebase not ready yet during hydration, will retry on next sync');
-    } else {
-        try {
-            const remotePrimary = await NexusCloud.pull(googleSub);
-            if (remotePrimary && remotePrimary.save) {
-                merged = mergeSaves(merged, remotePrimary.save);
-                console.log('✅ Loaded data from Firebase on login');
-            }
-        } catch (e) {
-            console.warn('Failed to hydrate from Firebase:', e);
+    // Try to load from cloud storage
+    try {
+        const remotePrimary = await NexusCloud.pull(googleSub);
+        if (remotePrimary && remotePrimary.save) {
+            merged = mergeSaves(merged, remotePrimary.save);
+            console.log('✅ Loaded data from cloud on login');
         }
+    } catch (e) {
+        console.warn('Cloud hydration not critical:', e.message);
     }
 
     merged = normalizeSaveData(merged);
@@ -365,11 +361,11 @@ async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
     
     initialCloudHydrated = true;
 
-    // Push merged data to Firebase
+    // Push merged data to cloud
     try {
         await NexusCloud.push(googleSub, JSON.stringify(merged));
     } catch (e) {
-        console.warn('Failed to push on hydrate:', e);
+        console.warn('Cloud push on hydrate failed (not critical):', e.message);
     }
 
     return merged;
@@ -1621,6 +1617,7 @@ function handleAuth() {
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
             if (authScreen) authScreen.classList.add('hidden');
+            console.log('✅ Login complete:', user);
             resolve();
         };
 
@@ -1634,35 +1631,40 @@ function handleAuth() {
             };
         }
 
-        // 3. Deep Sync via GIS
+        // Google Login Handler
         initGIS(async (response) => {
             const payload = decodeJWT(response.credential);
             if (payload && payload.sub) {
                 currentGoogleSub = payload.sub;
                 localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                // Get name from cloud mapping or fallback to google name
-                let finalName = await NexusCloud.getMap(payload.sub);
-                if (!finalName) {
-                    const cleanLast = (lastUser && lastUser !== 'null' && lastUser !== 'undefined') ? lastUser : null;
-                    finalName = cleanLast || payload.name.replace(/\s/g, '_');
-                    NexusCloud.setMap(payload.sub, finalName);
+                // Use username from last login or Google name
+                const lastUser = localStorage.getItem('geo_last_user');
+                let finalName = (lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) 
+                    ? lastUser 
+                    : payload.name.replace(/\s/g, '_');
+                
+                localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
+                
+                // Load existing data if any
+                try {
+                    await hydrateLinkedAccount(finalName, currentGoogleSub, [lastUser]);
+                } catch (e) {
+                    console.log('Hydration skipped, continuing...');
                 }
-                localStorage.setItem('geo_map_' + payload.sub, finalName);
-                await hydrateLinkedAccount(finalName, payload.sub, [lastUser]);
 
                 finalizeLogin(finalName);
             }
         });
 
-        // Keep guest users frictionless.
+        // Keep guest users frictionless
         if (lastUser && lastUser.startsWith('Agent_')) {
             initialCloudHydrated = true;
             finalizeLogin(lastUser);
             return;
         }
 
-        // Always verify Google identity for synced profiles to avoid stale per-browser sub drift.
+        // Show auth screen
         showAuth('Sign in with Google to sync one shared profile across all devices.');
     });
 }
