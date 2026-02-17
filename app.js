@@ -453,7 +453,11 @@ async function fetchCountries() {
 
 // ===================== AI SERVICE =====================
 async function getAIKey() {
-    return CONFIG.SYSTEM_KEY;
+    const localKey = (localStorage.getItem('geo_openrouter_key') || '').trim();
+    if (localKey) return localKey;
+    const configKey = (CONFIG.AI_KEY || '').trim();
+    if (configKey) return configKey;
+    return null;
 }
 
 // Emoji Nexus Generator
@@ -1505,10 +1509,20 @@ function initEvents() {
     $('#btn-open-settings').addEventListener('click', () => {
         showView('settings');
         if ($('#settings-username')) $('#settings-username').value = currentUser;
+        if ($('#settings-ai-key')) $('#settings-ai-key').value = (localStorage.getItem('geo_openrouter_key') || '').trim();
     });
     $('#settings-back').addEventListener('click', goHome);
     $('#btn-save-settings').addEventListener('click', async () => {
         const newName = $('#settings-username').value.trim();
+        const aiKeyInput = $('#settings-ai-key');
+        const newAIKey = aiKeyInput ? aiKeyInput.value.trim() : '';
+        const existingAIKey = (localStorage.getItem('geo_openrouter_key') || '').trim();
+        const aiKeyChanged = newAIKey !== existingAIKey;
+
+        if (aiKeyChanged) {
+            if (newAIKey) localStorage.setItem('geo_openrouter_key', newAIKey);
+            else localStorage.removeItem('geo_openrouter_key');
+        }
 
         if (newName && newName !== currentUser) {
             NexusModal.confirm('Migrate Profile?', `Rename your agent to "${newName}"? Your current progress will be moved to this new record.`, (ok) => {
@@ -1542,6 +1556,11 @@ function initEvents() {
                     });
                 }
             });
+            return;
+        }
+
+        if (aiKeyChanged) {
+            NexusModal.show('Saved', newAIKey ? 'OpenRouter API key updated.' : 'OpenRouter API key removed.', 'bx-key');
         }
     });
 
