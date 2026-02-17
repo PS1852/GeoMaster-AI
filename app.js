@@ -425,8 +425,14 @@ const NexusCloud = {
 async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
     // Check if there's a backup name stored in backend
     const backendName = await NexusCloud.getName(googleSub);
-    // Prefer device-saved username and only use backend as fallback.
-    if ((!username || username === 'null' || username === 'undefined') && backendName) {
+    // Prefer backend name when current candidate is missing or has no local profile data.
+    if (
+        backendName &&
+        (
+            !isValidStoredUserName(username) ||
+            (!hasLocalProfileData(username) && isValidStoredUserName(backendName))
+        )
+    ) {
         username = backendName;
     }
     
@@ -1560,7 +1566,7 @@ function initEvents() {
         const newName = $('#settings-username').value.trim();
 
         if (newName && newName !== currentUser) {
-            NexusModal.confirm('Migrate Profile?', `Rename your agent to "${newName}"? Your current progress will be moved to this new record.`, (ok) => {
+            NexusModal.confirm('Migrate Profile?', `Rename your agent to "${newName}"? Your current progress will be moved to this new record.`, async (ok) => {
                 if (ok) {
                     const oldKey = CONFIG.STORAGE_KEY + '_' + currentUser;
                     const newKey = CONFIG.STORAGE_KEY + '_' + newName;
@@ -1572,8 +1578,9 @@ function initEvents() {
                     localStorage.setItem('geo_last_user', newName);
                     if (currentGoogleSub) {
                         localStorage.setItem('geo_map_' + currentGoogleSub, newName);
+                        localStorage.setItem(getScopedNameKey(currentGoogleSub), newName);
                         // Sync name to backend
-                        NexusCloud.setName(currentGoogleSub, newName);
+                        await NexusCloud.setName(currentGoogleSub, newName);
                         // Broadcast name change to other tabs/browsers on this device
                         if (broadcastChannel) {
                             broadcastChannel.postMessage({
@@ -1582,7 +1589,7 @@ function initEvents() {
                                 newName: newName
                             });
                         }
-                        NexusCloud.push(currentGoogleSub, JSON.stringify(save));
+                        await NexusCloud.push(currentGoogleSub, JSON.stringify(save));
                     }
                     currentUser = newName;
 
@@ -1751,13 +1758,16 @@ function handleAuth() {
                     const mappedUser = localStorage.getItem('geo_map_' + currentGoogleSub);
                     const scopedUser = localStorage.getItem(getScopedNameKey(currentGoogleSub));
                     const lastUser = localStorage.getItem('geo_last_user');
+                    const backendName = await NexusCloud.getName(currentGoogleSub);
                     let finalName = null;
                     if (hasLocalProfileData(scopedUser)) finalName = scopedUser;
                     else if (hasLocalProfileData(mappedUser)) finalName = mappedUser;
                     else if (hasLocalProfileData(lastUser)) finalName = lastUser;
+                    else if (hasLocalProfileData(backendName)) finalName = backendName;
                     else if (isValidStoredUserName(scopedUser)) finalName = scopedUser;
                     else if (isValidStoredUserName(mappedUser)) finalName = mappedUser;
                     else if (isValidStoredUserName(lastUser)) finalName = lastUser;
+                    else if (isValidStoredUserName(backendName)) finalName = backendName;
                     else finalName = getBestLocalProfileName() || payload.name.replace(/\s/g, '_');
                     
                     localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
@@ -1849,6 +1859,7 @@ async function boot() {
         // Initialize local sync mechanisms
         initBroadcastChannel();
         startLocalStoragePolling();
+        startNameSyncPolling();
 
         // Ensure splash is visible for loading progress if it was hidden
         const splash = $('#splash-screen');
