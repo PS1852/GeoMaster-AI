@@ -24,6 +24,9 @@ const CONFIG = {
 // ===================== LOCAL STORAGE + BROADCAST SYNC =====================
 // Uses BroadcastChannel to sync between tabs/windows on the same device
 let broadcastChannel = null;
+function getScopedNameKey(googleSub) {
+    return 'geo_name_' + googleSub;
+}
 
 function initBroadcastChannel() {
     if (typeof BroadcastChannel === 'undefined') {
@@ -47,6 +50,8 @@ function initBroadcastChannel() {
             } else if (event.data.type === 'nameChange' && event.data.googleId === currentGoogleSub) {
                 console.log('📨 Name changed in another browser:', event.data.newName);
                 currentUser = event.data.newName;
+                localStorage.setItem('geo_map_' + currentGoogleSub, event.data.newName);
+                localStorage.setItem(getScopedNameKey(currentGoogleSub), event.data.newName);
                 updateSidebarStats();
             }
         };
@@ -123,6 +128,8 @@ function startNameSyncPolling() {
                 
                 currentUser = backendName;
                 localStorage.setItem('geo_last_user', backendName);
+                localStorage.setItem('geo_map_' + currentGoogleSub, backendName);
+                localStorage.setItem(getScopedNameKey(currentGoogleSub), backendName);
                 updateSidebarStats();
                 
                 // Broadcast to other tabs
@@ -201,6 +208,41 @@ function loadSave(username) {
         if (raw && raw !== 'null' && raw !== 'undefined') return parseSaveData(raw) || getDefaultSave();
     } catch (e) { console.warn('Save corrupted, resetting.'); }
     return getDefaultSave();
+}
+
+function isValidStoredUserName(name) {
+    return !!name && name !== 'null' && name !== 'undefined' && !name.startsWith('Agent_');
+}
+
+function hasLocalProfileData(name) {
+    if (!isValidStoredUserName(name)) return false;
+    const key = CONFIG.STORAGE_KEY + '_' + name;
+    const raw = localStorage.getItem(key);
+    return !!(raw && raw !== 'null' && raw !== 'undefined');
+}
+
+function getBestLocalProfileName() {
+    const prefix = CONFIG.STORAGE_KEY + '_';
+    let bestName = null;
+    let bestScore = -1;
+
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(prefix)) continue;
+        const name = key.slice(prefix.length);
+        if (!isValidStoredUserName(name)) continue;
+
+        const data = parseSaveData(localStorage.getItem(key));
+        if (!data) continue;
+
+        const score = (data.level || 1) * 100000 + (data.xp || 0) + (data.totalCorrect || 0) * 100;
+        if (score > bestScore) {
+            bestScore = score;
+            bestName = name;
+        }
+    }
+
+    return bestName;
 }
 
 function persistLocalSave(data) {
@@ -1678,6 +1720,10 @@ function handleAuth() {
             hasResolved = true;
             loginUser(user);
             localStorage.setItem('geo_last_user', user);
+            if (currentGoogleSub && !user.startsWith('Agent_')) {
+                localStorage.setItem('geo_map_' + currentGoogleSub, user);
+                localStorage.setItem(getScopedNameKey(currentGoogleSub), user);
+            }
             if (authScreen) authScreen.classList.add('hidden');
             console.log('✅ Login complete:', user);
             resolve();
@@ -1701,16 +1747,21 @@ function handleAuth() {
                     currentGoogleSub = payload.sub;
                     localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                    // Prefer same-device mapped username, then last username, then Google profile name.
+                    // Prefer the best local username for this account/device.
                     const mappedUser = localStorage.getItem('geo_map_' + currentGoogleSub);
+                    const scopedUser = localStorage.getItem(getScopedNameKey(currentGoogleSub));
                     const lastUser = localStorage.getItem('geo_last_user');
-                    let finalName = (mappedUser && mappedUser !== 'null' && mappedUser !== 'undefined' && !mappedUser.startsWith('Agent_'))
-                        ? mappedUser
-                        : ((lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_'))
-                            ? lastUser
-                            : payload.name.replace(/\s/g, '_'));
+                    let finalName = null;
+                    if (hasLocalProfileData(scopedUser)) finalName = scopedUser;
+                    else if (hasLocalProfileData(mappedUser)) finalName = mappedUser;
+                    else if (hasLocalProfileData(lastUser)) finalName = lastUser;
+                    else if (isValidStoredUserName(scopedUser)) finalName = scopedUser;
+                    else if (isValidStoredUserName(mappedUser)) finalName = mappedUser;
+                    else if (isValidStoredUserName(lastUser)) finalName = lastUser;
+                    else finalName = getBestLocalProfileName() || payload.name.replace(/\s/g, '_');
                     
                     localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
+                    localStorage.setItem(getScopedNameKey(currentGoogleSub), finalName);
                     
                     // Load existing data if any
                     try {
@@ -1739,9 +1790,19 @@ function handleAuth() {
         if (lastSub && lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) {
             currentGoogleSub = lastSub;
             const mappedName = localStorage.getItem('geo_map_' + lastSub);
-            const rememberedName = (mappedName && mappedName !== 'null' && mappedName !== 'undefined' && !mappedName.startsWith('Agent_'))
-                ? mappedName
-                : lastUser;
+            const scopedName = localStorage.getItem(getScopedNameKey(lastSub));
+            const rememberedName = hasLocalProfileData(scopedName)
+                ? scopedName
+                : (hasLocalProfileData(mappedName)
+                    ? mappedName
+                    : (hasLocalProfileData(lastUser)
+                        ? lastUser
+                        : (isValidStoredUserName(scopedName)
+                            ? scopedName
+                            : (isValidStoredUserName(mappedName)
+                                ? mappedName
+                                : lastUser))));
+            
             finalizeLogin(rememberedName);
             return;
         }
