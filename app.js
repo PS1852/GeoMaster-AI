@@ -104,6 +104,12 @@ function startNameSyncPolling() {
             const backendName = await NexusCloud.getName(currentGoogleSub);
             console.log('🔍 Polling: current=' + currentUser + ', backend=' + backendName);
             if (backendName && backendName !== currentUser) {
+                const mappedName = localStorage.getItem('geo_map_' + currentGoogleSub);
+                // Keep same-device preference: if this device already has a mapped name,
+                // do not let backend polling override it.
+                if (mappedName && mappedName === currentUser) {
+                    return;
+                }
                 console.log('📝 Name changed on another device, updating to:', backendName);
                 
                 // Migrate save data from old name to new name
@@ -377,7 +383,8 @@ const NexusCloud = {
 async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
     // Check if there's a backup name stored in backend
     const backendName = await NexusCloud.getName(googleSub);
-    if (backendName) {
+    // Prefer device-saved username and only use backend as fallback.
+    if ((!username || username === 'null' || username === 'undefined') && backendName) {
         username = backendName;
     }
     
@@ -1694,11 +1701,14 @@ function handleAuth() {
                     currentGoogleSub = payload.sub;
                     localStorage.setItem('geo_last_sub', currentGoogleSub);
 
-                    // Use username from last login or Google name
+                    // Prefer same-device mapped username, then last username, then Google profile name.
+                    const mappedUser = localStorage.getItem('geo_map_' + currentGoogleSub);
                     const lastUser = localStorage.getItem('geo_last_user');
-                    let finalName = (lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_')) 
-                        ? lastUser 
-                        : payload.name.replace(/\s/g, '_');
+                    let finalName = (mappedUser && mappedUser !== 'null' && mappedUser !== 'undefined' && !mappedUser.startsWith('Agent_'))
+                        ? mappedUser
+                        : ((lastUser && lastUser !== 'null' && lastUser !== 'undefined' && !lastUser.startsWith('Agent_'))
+                            ? lastUser
+                            : payload.name.replace(/\s/g, '_'));
                     
                     localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
                     
