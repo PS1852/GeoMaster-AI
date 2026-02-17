@@ -453,7 +453,7 @@ async function fetchCountries() {
 
 // ===================== AI SERVICE =====================
 async function getAIKey() {
-    return (CONFIG.SYSTEM_KEY || CONFIG.AI_KEY || '').trim();
+    return CONFIG.SYSTEM_KEY;
 }
 
 // Emoji Nexus Generator
@@ -561,7 +561,7 @@ Rules:
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 20000);
         const currentKey = await getAIKey();
-        if (!currentKey) return "AI service is not configured.";
+        if (!currentKey) return "AI Key missing. Please set it in Settings.";
 
         const res = await fetch(CONFIG.API_AI, {
             method: 'POST',
@@ -1542,7 +1542,6 @@ function initEvents() {
                     });
                 }
             });
-            return;
         }
     });
 
