@@ -33,7 +33,7 @@ function initBroadcastChannel() {
         console.warn('BroadcastChannel not supported');
         return;
     }
-    
+
     try {
         broadcastChannel = new BroadcastChannel('geomaster-sync');
         broadcastChannel.onmessage = (event) => {
@@ -103,7 +103,7 @@ function startLocalStoragePolling() {
 // Poll backend for name changes
 function startNameSyncPolling() {
     if (!currentGoogleSub) return;
-    
+
     setInterval(async () => {
         try {
             const backendName = await NexusCloud.getName(currentGoogleSub);
@@ -116,22 +116,22 @@ function startNameSyncPolling() {
                     return;
                 }
                 console.log('📝 Name changed on another device, updating to:', backendName);
-                
+
                 // Migrate save data from old name to new name
                 const oldKey = CONFIG.STORAGE_KEY + '_' + currentUser;
                 const newKey = CONFIG.STORAGE_KEY + '_' + backendName;
                 const oldData = localStorage.getItem(oldKey);
-                
+
                 if (oldData) {
                     localStorage.setItem(newKey, oldData);
                 }
-                
+
                 currentUser = backendName;
                 localStorage.setItem('geo_last_user', backendName);
                 localStorage.setItem('geo_map_' + currentGoogleSub, backendName);
                 localStorage.setItem(getScopedNameKey(currentGoogleSub), backendName);
                 updateSidebarStats();
-                
+
                 // Broadcast to other tabs
                 if (broadcastChannel) {
                     broadcastChannel.postMessage({
@@ -264,7 +264,7 @@ let initialCloudHydrated = false;
 // IMMEDIATE CLOUD PUSH - Forces sync right away
 async function forcePushCloud() {
     if (!canCloudSync()) return;
-    
+
     try {
         const saveJson = JSON.stringify(save);
         await NexusCloud.push(currentGoogleSub, saveJson);
@@ -287,13 +287,13 @@ function queueCloudPush() {
 
 async function syncCloudNow() {
     if (!canCloudSync() || cloudSyncInFlight) return;
-    
+
     cloudSyncInFlight = true;
     try {
         setSyncIndicator(true, "🔄 Syncing data...");
         const remote = await NexusCloud.pull(currentGoogleSub);
         initialCloudHydrated = true;
-        
+
         if (!remote || !remote.save) {
             console.log('📤 No remote data found, pushing local...');
             // If no data on cloud, push our local data
@@ -307,7 +307,7 @@ async function syncCloudNow() {
         const mergedJson = JSON.stringify(merged);
         const localJson = JSON.stringify(normalizeSaveData(save));
         const remoteJson = JSON.stringify(normalizeSaveData(remote.save));
-        
+
         if (mergedJson !== localJson) {
             save = merged;
             persistLocalSave(save);
@@ -320,11 +320,11 @@ async function syncCloudNow() {
         }
         setSyncIndicator(false);
         console.log('✅ Sync complete');
-    } catch (e) { 
+    } catch (e) {
         console.error('❌ Sync error:', e);
         setSyncIndicator(false);
-    } finally { 
-        cloudSyncInFlight = false; 
+    } finally {
+        cloudSyncInFlight = false;
     }
 }
 
@@ -370,7 +370,7 @@ const NexusCloud = {
             console.error('❌ Push failed:', e);
         }
     },
-    
+
     pull: async (googleId) => {
         try {
             const raw = localStorage.getItem('geomaster_cloud_' + googleId);
@@ -384,10 +384,10 @@ const NexusCloud = {
             return null;
         }
     },
-    
+
     pullLegacy: async (username) => null,
-    pushLegacy: async (username, data) => {},
-    
+    pushLegacy: async (username, data) => { },
+
     // Get stored username from backend
     getName: async (googleId) => {
         try {
@@ -405,7 +405,7 @@ const NexusCloud = {
         }
         return null;
     },
-    
+
     // Store username to backend
     setName: async (googleId, name) => {
         try {
@@ -435,10 +435,10 @@ async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
     ) {
         username = backendName;
     }
-    
+
     // Load local data first
     let merged = loadSave(username);
-    
+
     // Try to load from cloud storage
     try {
         const remotePrimary = await NexusCloud.pull(googleSub);
@@ -452,14 +452,14 @@ async function hydrateLinkedAccount(username, googleSub, extraUsernames = []) {
 
     merged = normalizeSaveData(merged);
     localStorage.setItem(CONFIG.STORAGE_KEY + '_' + username, JSON.stringify(merged));
-    
+
     // Also save legacy usernames for compatibility
     extraUsernames.forEach((name) => {
         if (name !== username) {
             localStorage.setItem(CONFIG.STORAGE_KEY + '_' + name, JSON.stringify(merged));
         }
     });
-    
+
     initialCloudHydrated = true;
 
     // Push merged data to cloud
@@ -869,10 +869,16 @@ class GameSession {
         save.totalCorrect++;
         save.xp += 50 + (this.streak * 5);
         // Level up
+        const prevLevel = save.level;
         while (save.xp >= save.level * CONFIG.XP_PER_LEVEL) { save.level++; }
+        if (save.level > prevLevel && typeof NexusSFX !== 'undefined') {
+            NexusSFX.levelUp();
+        } else if (typeof NexusSFX !== 'undefined') {
+            NexusSFX.xpGain();
+        }
         saveSave(save);
         // CRITICAL FIX: Force cloud sync when user gets answer correct
-        if (canCloudSync()) forcePushCloud().catch(e => {});
+        if (canCloudSync()) forcePushCloud().catch(e => { });
     }
 
     miss() {
@@ -881,7 +887,7 @@ class GameSession {
         save.totalWrong++;
         saveSave(save);
         // CRITICAL FIX: Force cloud sync when user gets answer wrong
-        if (canCloudSync()) forcePushCloud().catch(e => {});
+        if (canCloudSync()) forcePushCloud().catch(e => { });
     }
 
     markAnswered(cca3) {
@@ -893,7 +899,7 @@ class GameSession {
         }
         saveSave(save);
         // CRITICAL FIX: Force cloud sync when marking country as answered
-        if (canCloudSync()) forcePushCloud().catch(e => {});
+        if (canCloudSync()) forcePushCloud().catch(e => { });
     }
 }
 
@@ -1113,10 +1119,15 @@ function handleStandardAnswer(btn, selected, target) {
         btn.classList.add('correct');
         game.hit();
         game.markAnswered(target.cca3);
+        if (typeof NexusSFX !== 'undefined') {
+            NexusSFX.correct();
+            if (game.streak > 0 && game.streak % 5 === 0) NexusSFX.streakMilestone();
+        }
     } else {
         btn.classList.add('wrong');
         game.miss();
         highlightCorrect('#quiz-options', target.cca3);
+        if (typeof NexusSFX !== 'undefined') NexusSFX.wrong();
     }
 
     // Update display
@@ -1226,10 +1237,15 @@ function handleOracleAnswer(btn, selected, target) {
     if (isCorrect) {
         btn.classList.add('correct');
         game.hit();
+        if (typeof NexusSFX !== 'undefined') {
+            NexusSFX.correct();
+            if (game.streak > 0 && game.streak % 5 === 0) NexusSFX.streakMilestone();
+        }
     } else {
         btn.classList.add('wrong');
         game.miss();
         highlightCorrect('#oracle-options', target.cca3);
+        if (typeof NexusSFX !== 'undefined') NexusSFX.wrong();
     }
 
     $('#oracle-score').textContent = game.score;
@@ -1262,6 +1278,7 @@ function updateSentinelTimerDisplay() {
 }
 
 function startSentinelQuiz() {
+    if (typeof NexusSFX !== 'undefined') NexusSFX.startAmbient();
     currentGame = new GameSession('sentinel');
     currentGame.credits = 3;
     currentGame.history = [];
@@ -1408,6 +1425,10 @@ function handleSentinelAnswer(btn, selected) {
         game.hit();
         game.markAnswered(game.target.cca3);
         addChatMsg('bot', '✅ Target confirmed. Secure node cleared. <b>+XP</b>');
+        if (typeof NexusSFX !== 'undefined') {
+            NexusSFX.correct();
+            if (game.streak > 0 && game.streak % 5 === 0) NexusSFX.streakMilestone();
+        }
     } else {
         btn.classList.add('wrong');
         game.miss();
@@ -1415,6 +1436,7 @@ function handleSentinelAnswer(btn, selected) {
         $$('#sentinel-options .opt-btn').forEach(b => {
             if (b.textContent === game.target.name.common) b.classList.add('correct');
         });
+        if (typeof NexusSFX !== 'undefined') NexusSFX.wrong();
     }
 
     $('#sentinel-score').textContent = game.score;
@@ -1433,6 +1455,10 @@ function handleSentinelAnswer(btn, selected) {
 function endGame() {
     if (!currentGame) return;
     if (currentGame.timer) currentGame.timer.stop();
+    if (typeof NexusSFX !== 'undefined') {
+        NexusSFX.stopAmbient();
+        NexusSFX.gameOver();
+    }
 
     $('#go-score').textContent = currentGame.score;
     $('#go-correct').textContent = save.totalCorrect;
@@ -1440,7 +1466,7 @@ function endGame() {
 
     showView('gameover');
     updateSidebarStats();
-    
+
     // CRITICAL FIX: Force immediate cloud push when game ends
     // Ensures data syncs across ALL devices with same Google account BEFORE app closes
     if (canCloudSync()) {
@@ -1610,6 +1636,56 @@ function initEvents() {
             }
         });
     });
+
+    // ── SFX Controls ──
+    if (typeof NexusSFX !== 'undefined') {
+        // Header quick-toggle
+        const sfxToggle = document.getElementById('sfx-toggle');
+        if (sfxToggle) {
+            sfxToggle.addEventListener('click', () => {
+                NexusSFX.toggleMute();
+                updateSettingsSFXUI();
+            });
+        }
+
+        // Settings page toggle
+        const settingsSfxToggle = document.getElementById('settings-sfx-toggle');
+        if (settingsSfxToggle) {
+            settingsSfxToggle.addEventListener('click', () => {
+                NexusSFX.toggleMute();
+                NexusSFX.updateMuteUI();
+                updateSettingsSFXUI();
+            });
+        }
+
+        // Volume slider
+        const volSlider = document.getElementById('sfx-volume');
+        if (volSlider) {
+            volSlider.value = parseFloat(localStorage.getItem('nexus_sfx_volume') || '0.35') * 100;
+            volSlider.addEventListener('input', (e) => {
+                NexusSFX.setVolume(parseInt(e.target.value) / 100);
+            });
+        }
+    }
+}
+
+function updateSettingsSFXUI() {
+    if (typeof NexusSFX === 'undefined') return;
+    NexusSFX.updateMuteUI();
+    const settingsBtn = document.getElementById('settings-sfx-toggle');
+    if (settingsBtn) {
+        const icon = settingsBtn.querySelector('i');
+        const label = settingsBtn.querySelector('span');
+        if (NexusSFX.isMuted()) {
+            if (icon) icon.className = 'bx bx-volume-mute';
+            if (label) label.textContent = 'SFX Disabled';
+            settingsBtn.classList.add('muted');
+        } else {
+            if (icon) icon.className = 'bx bx-volume-full';
+            if (label) label.textContent = 'SFX Enabled';
+            settingsBtn.classList.remove('muted');
+        }
+    }
 }
 
 
@@ -1628,8 +1704,10 @@ const NexusModal = {
             actions.innerHTML = `<button class="btn-primary" style="flex:1" id="modal-ok">OK</button>`;
 
             overlay.classList.add('active');
+            if (typeof NexusSFX !== 'undefined') NexusSFX.modalOpen();
             $('#modal-ok').onclick = () => {
                 overlay.classList.remove('active');
+                if (typeof NexusSFX !== 'undefined') NexusSFX.modalClose();
                 resolve(true);
             };
         });
@@ -1648,12 +1726,15 @@ const NexusModal = {
         `;
 
         overlay.classList.add('active');
+        if (typeof NexusSFX !== 'undefined') NexusSFX.modalOpen();
         $('#modal-cancel').onclick = () => {
             overlay.classList.remove('active');
+            if (typeof NexusSFX !== 'undefined') NexusSFX.modalClose();
             if (callback) callback(false);
         };
         $('#modal-ok').onclick = () => {
             overlay.classList.remove('active');
+            if (typeof NexusSFX !== 'undefined') NexusSFX.modalClose();
             if (callback) callback(true);
         };
     }
@@ -1769,10 +1850,10 @@ function handleAuth() {
                     else if (isValidStoredUserName(lastUser)) finalName = lastUser;
                     else if (isValidStoredUserName(backendName)) finalName = backendName;
                     else finalName = getBestLocalProfileName() || payload.name.replace(/\s/g, '_');
-                    
+
                     localStorage.setItem('geo_map_' + currentGoogleSub, finalName);
                     localStorage.setItem(getScopedNameKey(currentGoogleSub), finalName);
-                    
+
                     // Load existing data if any
                     try {
                         await hydrateLinkedAccount(finalName, currentGoogleSub, [lastUser]);
@@ -1812,7 +1893,7 @@ function handleAuth() {
                             : (isValidStoredUserName(mappedName)
                                 ? mappedName
                                 : lastUser))));
-            
+
             finalizeLogin(rememberedName);
             return;
         }
@@ -1837,7 +1918,7 @@ function loginUser(username) {
     // Initialize stats
     updateSidebarStats();
     startCloudSync();
-    
+
     // CRITICAL FIX: Immediately sync cloud data after login
     // This ensures user gets their latest data across all devices
     if (canCloudSync()) {
@@ -1901,6 +1982,13 @@ async function boot() {
         updateSidebarStats();
         showView('home');
 
+        // SFX: Boot chime + hook interactive elements
+        if (typeof NexusSFX !== 'undefined') {
+            NexusSFX.bootChime();
+            NexusSFX.updateMuteUI();
+            NexusSFX.hookInteractiveElements();
+        }
+
         console.log('GeoMaster AI v2.0 — ' + allCountries.length + ' countries loaded.');
 
     } catch (err) {
@@ -1914,9 +2002,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ========== GO ==========
 document.addEventListener('DOMContentLoaded', boot);
-window.addEventListener('focus', () => { 
+window.addEventListener('focus', () => {
     console.log('🔄 Window focused - syncing cloud data...');
-    syncCloudNow(); 
+    syncCloudNow();
 });
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {

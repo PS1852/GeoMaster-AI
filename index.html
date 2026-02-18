@@ -24,6 +24,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="mobile.css">
+    <link rel="stylesheet" href="nexus-sfx.css">
 
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -220,9 +221,14 @@
                         <h1 class="hero-title">Welcome to <span class="accent">GeoMaster AI</span></h1>
                         <p class="hero-sub">Master the geography of 197 countries through AI-powered challenges.</p>
                     </div>
-                    <button class="settings-btn" id="btn-open-settings" title="Agent Settings">
-                        <i class='bx bx-cog'></i>
-                    </button>
+                    <div class="header-actions">
+                        <button class="settings-btn" id="sfx-toggle" title="Mute SFX">
+                            <i class='bx bx-volume-full'></i>
+                        </button>
+                        <button class="settings-btn" id="btn-open-settings" title="Agent Settings">
+                            <i class='bx bx-cog'></i>
+                        </button>
+                    </div>
                 </header>
                 <div class="mode-grid">
                     <div class="mode-card" data-mode="flag">
@@ -454,6 +460,25 @@
                             UPDATE PROFILE <i class='bx bx-save'></i>
                         </button>
                     </div>
+
+                    <div class="settings-card">
+                        <div class="settings-item">
+                            <label>Sound Effects</label>
+                            <div class="sfx-controls">
+                                <button class="btn-sfx-toggle" id="settings-sfx-toggle">
+                                    <i class='bx bx-volume-full'></i>
+                                    <span>SFX Enabled</span>
+                                </button>
+                                <div class="volume-slider">
+                                    <i class='bx bx-volume-low'></i>
+                                    <input type="range" id="sfx-volume" min="0" max="100" value="35">
+                                    <i class='bx bx-volume-full'></i>
+                                </div>
+                            </div>
+                            <p class="help-text">Atmospheric sounds for correct/wrong answers, navigation, and UI
+                                interactions.</p>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -479,7 +504,8 @@
 
     <!-- CORE DATA & LOGIC -->
     <script src="countries.data.js?v=20260216b"></script>
-    <script src="app.js?v=20260217a"></script>
+    <script src="nexus-sfx.js?v=20260218a"></script>
+    <script src="app.js?v=20260218a"></script>
 </body>
 
 </html>
