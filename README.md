@@ -1,4 +1,4 @@
-# GeoMaster AI v2.0
+ GeoMaster AI v2.0
 
 A luxury, high-performance Geography Quiz Single Page Application with AI-powered hints, professional "Cyber-Slate" design, and comprehensive country data.
 
